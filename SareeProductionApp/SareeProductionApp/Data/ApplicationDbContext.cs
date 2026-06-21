@@ -22,6 +22,7 @@ namespace SareeProductionApp.Data
         public DbSet<WeaverIssueItem> WeaverIssueItems => Set<WeaverIssueItem>();
         public DbSet<SareeReceipt> SareeReceipts => Set<SareeReceipt>();
         public DbSet<SareeReceiptItem> SareeReceiptItems => Set<SareeReceiptItem>();
+        public DbSet<YarnCategory> YarnCategories => Set<YarnCategory>();
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -43,6 +44,7 @@ namespace SareeProductionApp.Data
             modelBuilder.Entity<WeaverIssueItem>().HasQueryFilter(ii => ii.DeletedAt == null);
             modelBuilder.Entity<SareeReceipt>().HasQueryFilter(sr => sr.DeletedAt == null);
             modelBuilder.Entity<SareeReceiptItem>().HasQueryFilter(sri => sri.DeletedAt == null);
+            modelBuilder.Entity<YarnCategory>().HasQueryFilter(yc => yc.DeletedAt == null);
 
             // Cascade behaviors and relational constraints
             modelBuilder.Entity<DyeingYarnDeliveryItem>()

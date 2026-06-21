@@ -437,4 +437,25 @@ namespace SareeProductionApp.Client.Models
         [Column("deleted_at")]
         public DateTime? DeletedAt { get; set; }
     }
+
+    [Table("yarn_categories", Schema = "public")]
+    public class YarnCategory
+    {
+        [Key]
+        [Column("id")]
+        public Guid Id { get; set; } = Guid.NewGuid();
+
+        [Required]
+        [Column("name")]
+        public string Name { get; set; } = string.Empty;
+
+        [Column("created_at")]
+        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+        [Column("updated_at")]
+        public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+
+        [Column("deleted_at")]
+        public DateTime? DeletedAt { get; set; }
+    }
 }

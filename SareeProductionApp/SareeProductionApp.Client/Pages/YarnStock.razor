@@ -107,6 +107,35 @@
                 </PagerContent>
             </MudTable>
         </MudTabPanel>
+
+        <!-- TAB 3: YARN CATEGORIES -->
+        <MudTabPanel Text="Yarn Categories" Icon="@Icons.Material.Filled.Category">
+            <div class="d-flex align-center justify-space-between mb-4">
+                <div>
+                    <MudText Typo="Typo.h5" Color="Color.Primary"><b>Yarn Categories</b></MudText>
+                    <MudText Typo="Typo.subtitle2" Color="Color.Secondary">Add and manage yarn category master choices (e.g. Warp, Weft, Jari)</MudText>
+                </div>
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenCategoryCreateDialog">
+                    Add Category
+                </MudButton>
+            </div>
+
+            <MudTable Items="_categories" Loading="_loadingCategory" Elevation="0">
+                <HeaderContent>
+                    <MudTh>Category Name</MudTh>
+                    <MudTh>Created At</MudTh>
+                    <MudTh>Actions</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd DataLabel="Category Name"><b>@context.Name</b></MudTd>
+                    <MudTd DataLabel="Created At">@context.CreatedAt.ToLocalTime().ToString("g")</MudTd>
+                    <MudTd DataLabel="Actions">
+                        <MudIconButton Icon="@Icons.Material.Filled.Edit" Color="Color.Info" Size="Size.Small" OnClick="@(() => OpenCategoryEditDialog(context))" />
+                        <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" Size="Size.Small" OnClick="@(() => ConfirmDeleteCategory(context))" />
+                    </MudTd>
+                </RowTemplate>
+            </MudTable>
+        </MudTabPanel>
     </MudTabs>
 </MudContainer>
 
@@ -124,11 +153,10 @@
             <MudGrid>
                 <MudItem xs="12">
                     <MudSelect T="string" Label="Yarn Category" @bind-Value="_editYarnModel.YarnType" Required="true" Variant="Variant.Outlined">
-                        <MudSelectItem Value="@("Warp")">Warp</MudSelectItem>
-                        <MudSelectItem Value="@("Weft")">Weft</MudSelectItem>
-                        <MudSelectItem Value="@("Jari")">Jari</MudSelectItem>
-                        <MudSelectItem Value="@("Cone")">Cone</MudSelectItem>
-                        <MudSelectItem Value="@("Others")">Others</MudSelectItem>
+                        @foreach (var category in _categories)
+                        {
+                            <MudSelectItem Value="@category.Name">@category.Name</MudSelectItem>
+                        }
                     </MudSelect>
                 </MudItem>
                 <MudItem xs="12" sm="6">
@@ -218,12 +246,18 @@
     private decimal _initialStockQty = 0.000m;
     private decimal _initialStockWeight = 0.000m;
 
+    private List<YarnCategory> _categories = new();
+    private YarnCategory _editCategoryModel = new();
+    private bool _loadingCategory = true;
+    private bool _isCategoryFormOpen = false;
+
     private DialogOptions _dialogOptions = new() { MaxWidth = MaxWidth.Small, FullWidth = true, CloseButton = true };
 
     protected override async Task OnInitializedAsync()
     {
         await LoadYarns();
         await LoadStock();
+        await LoadCategories();
     }
 
     private async Task LoadYarns()
@@ -479,5 +513,98 @@
     private void ExitToDashboard()
     {
         Navigation.NavigateTo("/");
+    }
+
+    private async Task LoadCategories()
+    {
+        _loadingCategory = true;
+        try
+        {
+            _categories = await Http.GetFromJsonAsync<List<YarnCategory>>("api/YarnCategory") ?? new();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add("Error loading categories: " + ex.Message, Severity.Error);
+        }
+        finally
+        {
+            _loadingCategory = false;
+        }
+    }
+
+    private void OpenCategoryCreateDialog()
+    {
+        _editCategoryModel = new YarnCategory { Id = Guid.Empty };
+        _isCategoryFormOpen = true;
+    }
+
+    private void OpenCategoryEditDialog(YarnCategory category)
+    {
+        _editCategoryModel = new YarnCategory
+        {
+            Id = category.Id,
+            Name = category.Name,
+            CreatedAt = category.CreatedAt
+        };
+        _isCategoryFormOpen = true;
+    }
+
+    private void CloseCategoryDialog()
+    {
+        _isCategoryFormOpen = false;
+    }
+
+    private async Task SaveCategory()
+    {
+        try
+        {
+            if (_editCategoryModel.Id == Guid.Empty)
+            {
+                var response = await Http.PostAsJsonAsync("api/YarnCategory", _editCategoryModel);
+                if (response.IsSuccessStatusCode)
+                {
+                    Snackbar.Add("Category created successfully!", Severity.Success);
+                }
+            }
+            else
+            {
+                var response = await Http.PutAsJsonAsync($"api/YarnCategory/{_editCategoryModel.Id}", _editCategoryModel);
+                if (response.IsSuccessStatusCode)
+                {
+                    Snackbar.Add("Category updated successfully!", Severity.Success);
+                }
+            }
+            _isCategoryFormOpen = false;
+            await LoadCategories();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add("Error saving category: " + ex.Message, Severity.Error);
+        }
+    }
+
+    private async Task ConfirmDeleteCategory(YarnCategory category)
+    {
+        bool? result = await DialogService.ShowMessageBoxAsync(
+            "Warning", 
+            $"Are you sure you want to delete category '{category.Name}'? Existing yarns using this category will remain unchanged.", 
+            yesText: "Delete", cancelText: "Cancel");
+
+        if (result == true)
+        {
+            try
+            {
+                var response = await Http.DeleteAsync($"api/YarnCategory/{category.Id}");
+                if (response.IsSuccessStatusCode)
+                {
+                    Snackbar.Add("Category deleted successfully!", Severity.Success);
+                    await LoadCategories();
+                }
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add("Error deleting category: " + ex.Message, Severity.Error);
+            }
+        }
     }
 }

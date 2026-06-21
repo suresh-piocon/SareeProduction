@@ -246,6 +246,74 @@ namespace SareeProductionApp.Controllers
     }
 
     // ============================================================================
+    // 2.5. Yarn Category Controller
+    // ============================================================================
+    [ApiController]
+    [Route("api/[controller]")]
+    public class YarnCategoryController : ControllerBase
+    {
+        private readonly ApplicationDbContext _context;
+
+        public YarnCategoryController(ApplicationDbContext context)
+        {
+            _context = context;
+        }
+
+        [HttpGet]
+        public async Task<ActionResult<IEnumerable<YarnCategory>>> GetCategories()
+        {
+            return await _context.YarnCategories.OrderBy(c => c.Name).ToListAsync();
+        }
+
+        [HttpGet("{id}")]
+        public async Task<ActionResult<YarnCategory>> GetCategory(Guid id)
+        {
+            var category = await _context.YarnCategories.FindAsync(id);
+            if (category == null) return NotFound();
+            return category;
+        }
+
+        [HttpPost]
+        public async Task<ActionResult<YarnCategory>> CreateCategory(YarnCategory category)
+        {
+            category.Id = Guid.NewGuid();
+            category.CreatedAt = DateTime.UtcNow;
+            category.UpdatedAt = DateTime.UtcNow;
+            _context.YarnCategories.Add(category);
+            await _context.SaveChangesAsync();
+            return CreatedAtAction(nameof(GetCategory), new { id = category.Id }, category);
+        }
+
+        [HttpPut("{id}")]
+        public async Task<IActionResult> UpdateCategory(Guid id, YarnCategory category)
+        {
+            if (id != category.Id) return BadRequest();
+
+            var existing = await _context.YarnCategories.FindAsync(id);
+            if (existing == null) return NotFound();
+
+            existing.Name = category.Name;
+            existing.UpdatedAt = DateTime.UtcNow;
+
+            _context.Entry(existing).State = EntityState.Modified;
+            await _context.SaveChangesAsync();
+            return NoContent();
+        }
+
+        [HttpDelete("{id}")]
+        public async Task<IActionResult> DeleteCategory(Guid id)
+        {
+            var category = await _context.YarnCategories.FindAsync(id);
+            if (category == null) return NotFound();
+
+            category.DeletedAt = DateTime.UtcNow;
+            _context.Entry(category).State = EntityState.Modified;
+            await _context.SaveChangesAsync();
+            return NoContent();
+        }
+    }
+
+    // ============================================================================
     // 3. Dyeing (Delivery & Receipt) Controller
     // ============================================================================
     [ApiController]
