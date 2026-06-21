@@ -487,10 +487,10 @@ CREATE OR REPLACE VIEW public.active_dyeing_yarn_delivery_items AS
 SELECT * FROM public.dyeing_yarn_delivery_items WHERE deleted_at IS NULL;
 
 CREATE OR REPLACE VIEW public.active_dyeing_yarn_receipt AS
-SELECT * FROM public.active_dyeing_yarn_receipt WHERE deleted_at IS NULL;
+SELECT * FROM public.dyeing_yarn_receipt WHERE deleted_at IS NULL;
 
 CREATE OR REPLACE VIEW public.active_dyeing_yarn_receipt_items AS
-SELECT * FROM public.active_dyeing_yarn_receipt_items WHERE deleted_at IS NULL;
+SELECT * FROM public.dyeing_yarn_receipt_items WHERE deleted_at IS NULL;
 
 CREATE OR REPLACE VIEW public.active_warp_beam_master AS
 SELECT * FROM public.warp_beam_master WHERE deleted_at IS NULL;
