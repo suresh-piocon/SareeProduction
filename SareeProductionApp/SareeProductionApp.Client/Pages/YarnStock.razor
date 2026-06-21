@@ -6,7 +6,7 @@
 <PageTitle>Yarn & Stock - Saree Production</PageTitle>
 
 <MudContainer MaxWidth="MaxWidth.Large" Class="my-4">
-    <MudTabs Elevation="2" Rounded="true" ApplyEffectsToInnerViews="true" PanelClass="pa-4">
+    <MudTabs Elevation="2" Rounded="true" ApplyEffectsToContainer="true" TabPanelsClass="pa-4">
         <!-- TAB 1: YARN STOCK LEVELS -->
         <MudTabPanel Text="Yarn Stock Levels" Icon="@Icons.Material.Filled.Inventory">
             <div class="d-flex align-center justify-space-between mb-4">
@@ -96,7 +96,7 @@
 </MudContainer>
 
 <!-- Create/Edit Yarn Dialog -->
-<MudDialog @bind-Open="_isYarnFormOpen" Options="_dialogOptions">
+<MudDialog @bind-Visible="_isYarnFormOpen" Options="_dialogOptions">
     <TitleContent>
         <MudText Typo="Typo.h6">
             <MudIcon Icon="@(_editYarnModel.Id == Guid.Empty ? Icons.Material.Filled.Add : Icons.Material.Filled.Edit)" Class="mr-2" />
@@ -134,7 +134,7 @@
 </MudDialog>
 
 <!-- Stock Adjustment Dialog -->
-<MudDialog @bind-Open="_isAdjustFormOpen" Options="_dialogOptions">
+<MudDialog @bind-Visible="_isAdjustFormOpen" Options="_dialogOptions">
     <TitleContent>
         <MudText Typo="Typo.h6">
             <MudIcon Icon="@Icons.Material.Filled.EditCalendar" Class="mr-2" />

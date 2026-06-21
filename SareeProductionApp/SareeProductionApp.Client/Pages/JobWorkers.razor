@@ -57,7 +57,7 @@
 </MudContainer>
 
 <!-- Create/Edit Form Dialog -->
-<MudDialog @bind-Open="_isFormOpen" Options="_dialogOptions">
+<MudDialog @bind-Visible="_isFormOpen" Options="_dialogOptions">
     <TitleContent>
         <MudText Typo="Typo.h6">
             <MudIcon Icon="@(_editModel.Id == Guid.Empty ? Icons.Material.Filled.Add : Icons.Material.Filled.Edit)" Class="mr-2" />
