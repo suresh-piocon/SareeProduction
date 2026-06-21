@@ -152,12 +152,15 @@
             <DataAnnotationsValidator />
             <MudGrid>
                 <MudItem xs="12">
-                    <MudSelect T="string" Label="Yarn Category" @bind-Value="_editYarnModel.YarnType" Required="true" Variant="Variant.Outlined">
-                        @foreach (var category in _categories)
-                        {
-                            <MudSelectItem Value="@category.Name">@category.Name</MudSelectItem>
-                        }
-                    </MudSelect>
+                    <div class="d-flex align-center gap-2">
+                        <MudSelect T="string" Label="Yarn Category" @bind-Value="_editYarnModel.YarnType" Required="true" Variant="Variant.Outlined" Style="flex-grow: 1;">
+                            @foreach (var category in _categories)
+                            {
+                                <MudSelectItem Value="@category.Name">@category.Name</MudSelectItem>
+                            }
+                        </MudSelect>
+                        <MudIconButton Icon="@Icons.Material.Filled.AddCircle" Color="Color.Primary" OnClick="OpenCategoryManager" Class="mt-1" Title="Manage Categories" />
+                    </div>
                 </MudItem>
                 <MudItem xs="12" sm="6">
                     <MudTextField Label="Color / Code" @bind-Value="_editYarnModel.Color" Variant="Variant.Outlined" />
@@ -210,6 +213,59 @@
     </DialogContent>
 </MudDialog>
 
+<!-- Manage Categories Dialog -->
+<MudDialog @bind-Visible="_isManageCategoriesOpen" Options="_dialogOptions">
+    <TitleContent>
+        <MudText Typo="Typo.h6">
+            <MudIcon Icon="@Icons.Material.Filled.Category" Class="mr-2" />
+            Manage Yarn Categories
+        </MudText>
+    </TitleContent>
+    <DialogContent>
+        <div class="d-flex align-center gap-2 mb-4">
+            <MudTextField Label="Category Name" @bind-Value="_newCategoryName" Variant="Variant.Outlined" Margin="Margin.Dense" Style="flex-grow: 1;" />
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveCategoryFromManager" StartIcon="@Icons.Material.Filled.Save">
+                Save
+            </MudButton>
+        </div>
+
+        <MudTable Items="_categories" Dense="true" Elevation="0" MaxHeight="250px" Scrollable="true">
+            <HeaderContent>
+                <MudTh>Category Name</MudTh>
+                <MudTh Style="width: 100px;">Actions</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="Category Name">
+                    @if (_editingCategoryId == context.Id)
+                    {
+                        <MudTextField @bind-Value="_editingCategoryName" Margin="Margin.Dense" Variant="Variant.Outlined" />
+                    }
+                    else
+                    {
+                        <b>@context.Name</b>
+                    }
+                </MudTd>
+                <MudTd DataLabel="Actions">
+                    @if (_editingCategoryId == context.Id)
+                    {
+                        <MudIconButton Icon="@Icons.Material.Filled.Check" Color="Color.Success" Size="Size.Small" OnClick="SaveEditingCategory" />
+                        <MudIconButton Icon="@Icons.Material.Filled.Close" Color="Color.Secondary" Size="Size.Small" OnClick="CancelEditingCategory" />
+                    }
+                    else
+                    {
+                        <MudIconButton Icon="@Icons.Material.Filled.Edit" Color="Color.Info" Size="Size.Small" OnClick="@(() => StartEditingCategory(context))" />
+                        <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" Size="Size.Small" OnClick="@(() => ConfirmDeleteCategory(context))" />
+                    }
+                </MudTd>
+            </RowTemplate>
+        </MudTable>
+        
+        <div class="d-flex justify-end mt-4">
+            <MudButton OnClick="CloseCategoryManager">Close</MudButton>
+        </div>
+    </DialogContent>
+</MudDialog>
+
 <!-- Add/Edit Stock Dialog -->
 <MudDialog @bind-Visible="_isStockFormOpen" Options="_dialogOptions">
     <TitleContent>
@@ -222,26 +278,16 @@
         <EditForm Model="@_editStockModel" OnValidSubmit="SaveStock">
             <DataAnnotationsValidator />
             <MudGrid>
-                @if (_editStockModel.Id == Guid.Empty)
-                {
-                    <MudItem xs="12">
-                        <MudSelect T="Guid" Label="Select Yarn" Value="_editStockModel.YarnId" ValueChanged="OnYarnSelected" Variant="Variant.Outlined">
-                            <MudSelectItem T="Guid" Value="Guid.Empty">-- New Yarn (Create Catalog Entry) --</MudSelectItem>
-                            @foreach (var yarn in _yarns)
+                <MudItem xs="12" sm="4">
+                    <div class="d-flex align-center gap-2">
+                        <MudSelect T="string" Label="Yarn Category" @bind-Value="_selectedYarnCategory" Required="true" Variant="Variant.Outlined" Style="flex-grow: 1;">
+                            @foreach (var category in _categories)
                             {
-                                <MudSelectItem Value="@yarn.Id">@yarn.YarnType (@yarn.Color) - @yarn.Denier</MudSelectItem>
+                                <MudSelectItem Value="@category.Name">@category.Name</MudSelectItem>
                             }
                         </MudSelect>
-                    </MudItem>
-                }
-                
-                <MudItem xs="12" sm="4">
-                    <MudSelect T="string" Label="Yarn Category" @bind-Value="_selectedYarnCategory" Required="true" Variant="Variant.Outlined">
-                        @foreach (var category in _categories)
-                        {
-                            <MudSelectItem Value="@category.Name">@category.Name</MudSelectItem>
-                        }
-                    </MudSelect>
+                        <MudIconButton Icon="@Icons.Material.Filled.AddCircle" Color="Color.Primary" OnClick="OpenCategoryManager" Class="mt-1" Title="Manage Categories" />
+                    </div>
                 </MudItem>
                 <MudItem xs="12" sm="4">
                     <MudTextField Label="Color" @bind-Value="_selectedYarnColor" Required="true" Variant="Variant.Outlined" />
@@ -282,6 +328,10 @@
     private string _selectedYarnCategory = "";
     private string _selectedYarnColor = "";
     private string _selectedYarnDenier = "";
+    private bool _isManageCategoriesOpen = false;
+    private string _newCategoryName = "";
+    private Guid _editingCategoryId = Guid.Empty;
+    private string _editingCategoryName = "";
 
     private List<YarnCategory> _categories = new();
     private YarnCategory _editCategoryModel = new();
@@ -427,23 +477,83 @@
         }
     }
 
-    private void OnYarnSelected(Guid yarnId)
+    private void OpenCategoryManager()
     {
-        _editStockModel.YarnId = yarnId;
-        var selectedYarn = _yarns.FirstOrDefault(y => y.Id == yarnId);
-        if (selectedYarn != null)
+        _newCategoryName = "";
+        _editingCategoryId = Guid.Empty;
+        _isManageCategoriesOpen = true;
+    }
+
+    private void CloseCategoryManager()
+    {
+        _isManageCategoriesOpen = false;
+    }
+
+    private async Task SaveCategoryFromManager()
+    {
+        if (string.IsNullOrWhiteSpace(_newCategoryName))
         {
-            _selectedYarnCategory = selectedYarn.YarnType;
-            _selectedYarnColor = selectedYarn.Color ?? "";
-            _selectedYarnDenier = selectedYarn.Denier ?? "";
+            Snackbar.Add("Category name cannot be empty.", Severity.Error);
+            return;
         }
-        else
+
+        try
         {
-            _selectedYarnCategory = "";
-            _selectedYarnColor = "";
-            _selectedYarnDenier = "";
+            var newCat = new YarnCategory { Id = Guid.NewGuid(), Name = _newCategoryName };
+            var response = await Http.PostAsJsonAsync("api/YarnCategory", newCat);
+            if (response.IsSuccessStatusCode)
+            {
+                Snackbar.Add("Category created successfully!", Severity.Success);
+                _newCategoryName = "";
+                await LoadCategories();
+            }
         }
-        StateHasChanged();
+        catch (Exception ex)
+        {
+            Snackbar.Add("Error saving category: " + ex.Message, Severity.Error);
+        }
+    }
+
+    private void StartEditingCategory(YarnCategory category)
+    {
+        _editingCategoryId = category.Id;
+        _editingCategoryName = category.Name;
+    }
+
+    private void CancelEditingCategory()
+    {
+        _editingCategoryId = Guid.Empty;
+        _editingCategoryName = "";
+    }
+
+    private async Task SaveEditingCategory()
+    {
+        if (string.IsNullOrWhiteSpace(_editingCategoryName))
+        {
+            Snackbar.Add("Category name cannot be empty.", Severity.Error);
+            return;
+        }
+
+        try
+        {
+            var cat = _categories.FirstOrDefault(c => c.Id == _editingCategoryId);
+            if (cat != null)
+            {
+                cat.Name = _editingCategoryName;
+                var response = await Http.PutAsJsonAsync($"api/YarnCategory/{cat.Id}", cat);
+                if (response.IsSuccessStatusCode)
+                {
+                    Snackbar.Add("Category updated successfully!", Severity.Success);
+                    _editingCategoryId = Guid.Empty;
+                    _editingCategoryName = "";
+                    await LoadCategories();
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add("Error updating category: " + ex.Message, Severity.Error);
+        }
     }
 
     private void OpenAddStockDialog()
@@ -481,53 +591,88 @@
     {
         try
         {
-            // If they are adding stock, and the selected yarn is Guid.Empty (meaning `-- New Yarn --`),
-            // create the yarn master record first.
-            if (_editStockModel.Id == Guid.Empty && _editStockModel.YarnId == Guid.Empty)
+            if (string.IsNullOrWhiteSpace(_selectedYarnCategory))
             {
-                if (string.IsNullOrWhiteSpace(_selectedYarnCategory))
-                {
-                    Snackbar.Add("Yarn Category is required.", Severity.Error);
-                    return;
-                }
-                if (string.IsNullOrWhiteSpace(_selectedYarnColor))
-                {
-                    Snackbar.Add("Color is required.", Severity.Error);
-                    return;
-                }
+                Snackbar.Add("Yarn Category is required.", Severity.Error);
+                return;
+            }
+            if (string.IsNullOrWhiteSpace(_selectedYarnColor))
+            {
+                Snackbar.Add("Color is required.", Severity.Error);
+                return;
+            }
 
-                var newYarn = new YarnMaster
-                {
-                    Id = Guid.NewGuid(),
-                    YarnType = _selectedYarnCategory,
-                    Color = _selectedYarnColor,
-                    Denier = _selectedYarnDenier,
-                    Description = "Created via Stock Adjustment"
-                };
+            // Find existing yarn master matching the entered category, color, and denier
+            var existingYarn = _yarns.FirstOrDefault(y => 
+                y.YarnType.Equals(_selectedYarnCategory, StringComparison.OrdinalIgnoreCase) &&
+                (y.Color ?? "").Equals(_selectedYarnColor, StringComparison.OrdinalIgnoreCase) &&
+                (y.Denier ?? "").Equals(_selectedYarnDenier, StringComparison.OrdinalIgnoreCase));
 
-                var yarnResponse = await Http.PostAsJsonAsync("api/Yarn", newYarn);
-                if (yarnResponse.IsSuccessStatusCode)
+            if (_editStockModel.Id == Guid.Empty)
+            {
+                // ADD STOCK
+                if (existingYarn == null)
                 {
-                    var createdYarn = await yarnResponse.Content.ReadFromJsonAsync<YarnMaster>();
-                    if (createdYarn != null)
+                    // Create new Yarn Catalog entry
+                    var newYarn = new YarnMaster
                     {
-                        _editStockModel.YarnId = createdYarn.Id;
+                        Id = Guid.NewGuid(),
+                        YarnType = _selectedYarnCategory,
+                        Color = _selectedYarnColor,
+                        Denier = _selectedYarnDenier,
+                        Description = "Created via Stock Adjustment"
+                    };
+
+                    var yarnResponse = await Http.PostAsJsonAsync("api/Yarn", newYarn);
+                    if (yarnResponse.IsSuccessStatusCode)
+                    {
+                        var createdYarn = await yarnResponse.Content.ReadFromJsonAsync<YarnMaster>();
+                        if (createdYarn != null)
+                        {
+                            _editStockModel.YarnId = createdYarn.Id;
+                        }
+                        else
+                        {
+                            Snackbar.Add("Error: Created yarn could not be read.", Severity.Error);
+                            return;
+                        }
                     }
                     else
                     {
-                        Snackbar.Add("Error: Created yarn could not be read.", Severity.Error);
+                        Snackbar.Add("Error: Failed to create new yarn catalog entry.", Severity.Error);
                         return;
                     }
                 }
                 else
                 {
-                    Snackbar.Add("Error: Failed to create new yarn catalog entry.", Severity.Error);
-                    return;
+                    _editStockModel.YarnId = existingYarn.Id;
+                }
+
+                await LoadYarns(); // Refresh yarns list first to include the newly created yarn
+
+                var existingStock = _stockList.FirstOrDefault(s => s.YarnId == _editStockModel.YarnId);
+                if (existingStock != null)
+                {
+                    existingStock.Qty = _editStockModel.Qty;
+                    existingStock.Quantity = _editStockModel.Quantity;
+                    var response = await Http.PutAsJsonAsync($"api/Yarn/stock/{existingStock.Id}", existingStock);
+                    if (response.IsSuccessStatusCode)
+                    {
+                        Snackbar.Add("Stock adjusted successfully!", Severity.Success);
+                    }
+                }
+                else
+                {
+                    var response = await Http.PostAsync($"api/Yarn/stock/adjust?yarnId={_editStockModel.YarnId}&quantity={_editStockModel.Quantity}&qty={_editStockModel.Qty}", null);
+                    if (response.IsSuccessStatusCode)
+                    {
+                        Snackbar.Add("Stock adjusted successfully!", Severity.Success);
+                    }
                 }
             }
             else
             {
-                // Update Yarn Master details if Category, Color, or Denier was modified
+                // EDIT EXISTING STOCK
                 var yarnId = _editStockModel.YarnId;
                 var yarn = _yarns.FirstOrDefault(y => y.Id == yarnId);
                 if (yarn != null)
@@ -557,40 +702,14 @@
                         }
                     }
                 }
-            }
 
-            // Now save the stock adjustment
-            if (_editStockModel.Id == Guid.Empty)
-            {
-                await LoadYarns(); // Refresh yarns list first to include any newly created yarn
-                var existing = _stockList.FirstOrDefault(s => s.YarnId == _editStockModel.YarnId);
-                if (existing != null)
-                {
-                    existing.Qty = _editStockModel.Qty;
-                    existing.Quantity = _editStockModel.Quantity;
-                    var response = await Http.PutAsJsonAsync($"api/Yarn/stock/{existing.Id}", existing);
-                    if (response.IsSuccessStatusCode)
-                    {
-                        Snackbar.Add("Stock adjusted successfully!", Severity.Success);
-                    }
-                }
-                else
-                {
-                    var response = await Http.PostAsync($"api/Yarn/stock/adjust?yarnId={_editStockModel.YarnId}&quantity={_editStockModel.Quantity}&qty={_editStockModel.Qty}", null);
-                    if (response.IsSuccessStatusCode)
-                    {
-                        Snackbar.Add("Stock created successfully!", Severity.Success);
-                    }
-                }
-            }
-            else
-            {
                 var response = await Http.PutAsJsonAsync($"api/Yarn/stock/{_editStockModel.Id}", _editStockModel);
                 if (response.IsSuccessStatusCode)
                 {
                     Snackbar.Add("Stock updated successfully!", Severity.Success);
                 }
             }
+
             _isStockFormOpen = false;
             await LoadYarns(); // reload yarns to update catalog views
             await LoadStock();

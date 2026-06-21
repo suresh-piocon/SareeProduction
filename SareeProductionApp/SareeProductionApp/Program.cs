@@ -42,4 +42,26 @@ app.MapRazorComponents<App>()
     .AddInteractiveWebAssemblyRenderMode()
     .AddAdditionalAssemblies(typeof(SareeProductionApp.Client._Imports).Assembly);
 
+using (var scope = app.Services.CreateScope())
+{
+    try
+    {
+        var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var warp = context.YarnCategories.FirstOrDefault(c => c.Name == "Warp");
+        if (warp != null) warp.Name = "Dyed Warp";
+
+        var weft = context.YarnCategories.FirstOrDefault(c => c.Name == "Weft");
+        if (weft != null) weft.Name = "Dyed Weft";
+
+        var cone = context.YarnCategories.FirstOrDefault(c => c.Name == "Cone");
+        if (cone != null) cone.Name = "Dyed Cone";
+
+        context.SaveChanges();
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"Error updating default categories: {ex.Message}");
+    }
+}
+
 app.Run();
