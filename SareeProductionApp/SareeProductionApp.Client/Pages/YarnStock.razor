@@ -225,8 +225,8 @@
                 @if (_editStockModel.Id == Guid.Empty)
                 {
                     <MudItem xs="12">
-                        <MudSelect T="Guid" Label="Select Yarn" Value="_editStockModel.YarnId" ValueChanged="OnYarnSelected" Required="true" Variant="Variant.Outlined">
-                            <MudSelectItem T="Guid" Value="Guid.Empty">-- Select Yarn --</MudSelectItem>
+                        <MudSelect T="Guid" Label="Select Yarn" Value="_editStockModel.YarnId" ValueChanged="OnYarnSelected" Variant="Variant.Outlined">
+                            <MudSelectItem T="Guid" Value="Guid.Empty">-- New Yarn (Create Catalog Entry) --</MudSelectItem>
                             @foreach (var yarn in _yarns)
                             {
                                 <MudSelectItem Value="@yarn.Id">@yarn.YarnType (@yarn.Color) - @yarn.Denier</MudSelectItem>
@@ -235,20 +235,20 @@
                     </MudItem>
                 }
                 
-                @if (_editStockModel.YarnId != Guid.Empty || _editStockModel.Id != Guid.Empty)
-                {
-                    <MudItem xs="12" sm="6">
-                        <MudSelect T="string" Label="Yarn Category" @bind-Value="_selectedYarnCategory" Required="true" Variant="Variant.Outlined">
-                            @foreach (var category in _categories)
-                            {
-                                <MudSelectItem Value="@category.Name">@category.Name</MudSelectItem>
-                            }
-                        </MudSelect>
-                    </MudItem>
-                    <MudItem xs="12" sm="6">
-                        <MudTextField Label="Color" @bind-Value="_selectedYarnColor" Variant="Variant.Outlined" />
-                    </MudItem>
-                }
+                <MudItem xs="12" sm="4">
+                    <MudSelect T="string" Label="Yarn Category" @bind-Value="_selectedYarnCategory" Required="true" Variant="Variant.Outlined">
+                        @foreach (var category in _categories)
+                        {
+                            <MudSelectItem Value="@category.Name">@category.Name</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" sm="4">
+                    <MudTextField Label="Color" @bind-Value="_selectedYarnColor" Required="true" Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12" sm="4">
+                    <MudTextField Label="Denier (Thickness)" @bind-Value="_selectedYarnDenier" Variant="Variant.Outlined" />
+                </MudItem>
                 <MudItem xs="12" sm="6">
                     <MudNumericField Label="Qty (Count)" @bind-Value="_editStockModel.Qty" Format="F3" Min="0.000m" Required="true" Variant="Variant.Outlined" />
                 </MudItem>
@@ -281,6 +281,7 @@
     private decimal _initialStockWeight = 0.000m;
     private string _selectedYarnCategory = "";
     private string _selectedYarnColor = "";
+    private string _selectedYarnDenier = "";
 
     private List<YarnCategory> _categories = new();
     private YarnCategory _editCategoryModel = new();
@@ -434,11 +435,13 @@
         {
             _selectedYarnCategory = selectedYarn.YarnType;
             _selectedYarnColor = selectedYarn.Color ?? "";
+            _selectedYarnDenier = selectedYarn.Denier ?? "";
         }
         else
         {
             _selectedYarnCategory = "";
             _selectedYarnColor = "";
+            _selectedYarnDenier = "";
         }
         StateHasChanged();
     }
@@ -448,6 +451,7 @@
         _editStockModel = new SareeProductionApp.Client.Models.YarnStock { Id = Guid.Empty, YarnId = Guid.Empty };
         _selectedYarnCategory = "";
         _selectedYarnColor = "";
+        _selectedYarnDenier = "";
         _isStockFormOpen = true;
     }
 
@@ -464,6 +468,7 @@
         };
         _selectedYarnCategory = stock.Yarn?.YarnType ?? "";
         _selectedYarnColor = stock.Yarn?.Color ?? "";
+        _selectedYarnDenier = stock.Yarn?.Denier ?? "";
         _isStockFormOpen = true;
     }
 
@@ -476,28 +481,80 @@
     {
         try
         {
-            // First, update Yarn Master details if Category or Color was modified
-            var yarnId = _editStockModel.YarnId;
-            var yarn = _yarns.FirstOrDefault(y => y.Id == yarnId);
-            if (yarn != null)
+            // If they are adding stock, and the selected yarn is Guid.Empty (meaning `-- New Yarn --`),
+            // create the yarn master record first.
+            if (_editStockModel.Id == Guid.Empty && _editStockModel.YarnId == Guid.Empty)
             {
-                bool yarnModified = false;
-                if (yarn.YarnType != _selectedYarnCategory)
+                if (string.IsNullOrWhiteSpace(_selectedYarnCategory))
                 {
-                    yarn.YarnType = _selectedYarnCategory;
-                    yarnModified = true;
+                    Snackbar.Add("Yarn Category is required.", Severity.Error);
+                    return;
                 }
-                if (yarn.Color != _selectedYarnColor)
+                if (string.IsNullOrWhiteSpace(_selectedYarnColor))
                 {
-                    yarn.Color = _selectedYarnColor;
-                    yarnModified = true;
+                    Snackbar.Add("Color is required.", Severity.Error);
+                    return;
                 }
-                if (yarnModified)
+
+                var newYarn = new YarnMaster
                 {
-                    var yarnResponse = await Http.PutAsJsonAsync($"api/Yarn/{yarn.Id}", yarn);
-                    if (!yarnResponse.IsSuccessStatusCode)
+                    Id = Guid.NewGuid(),
+                    YarnType = _selectedYarnCategory,
+                    Color = _selectedYarnColor,
+                    Denier = _selectedYarnDenier,
+                    Description = "Created via Stock Adjustment"
+                };
+
+                var yarnResponse = await Http.PostAsJsonAsync("api/Yarn", newYarn);
+                if (yarnResponse.IsSuccessStatusCode)
+                {
+                    var createdYarn = await yarnResponse.Content.ReadFromJsonAsync<YarnMaster>();
+                    if (createdYarn != null)
                     {
-                        Snackbar.Add("Warning: Failed to update yarn master details.", Severity.Warning);
+                        _editStockModel.YarnId = createdYarn.Id;
+                    }
+                    else
+                    {
+                        Snackbar.Add("Error: Created yarn could not be read.", Severity.Error);
+                        return;
+                    }
+                }
+                else
+                {
+                    Snackbar.Add("Error: Failed to create new yarn catalog entry.", Severity.Error);
+                    return;
+                }
+            }
+            else
+            {
+                // Update Yarn Master details if Category, Color, or Denier was modified
+                var yarnId = _editStockModel.YarnId;
+                var yarn = _yarns.FirstOrDefault(y => y.Id == yarnId);
+                if (yarn != null)
+                {
+                    bool yarnModified = false;
+                    if (yarn.YarnType != _selectedYarnCategory)
+                    {
+                        yarn.YarnType = _selectedYarnCategory;
+                        yarnModified = true;
+                    }
+                    if (yarn.Color != _selectedYarnColor)
+                    {
+                        yarn.Color = _selectedYarnColor;
+                        yarnModified = true;
+                    }
+                    if (yarn.Denier != _selectedYarnDenier)
+                    {
+                        yarn.Denier = _selectedYarnDenier;
+                        yarnModified = true;
+                    }
+                    if (yarnModified)
+                    {
+                        var yarnResponse = await Http.PutAsJsonAsync($"api/Yarn/{yarn.Id}", yarn);
+                        if (!yarnResponse.IsSuccessStatusCode)
+                        {
+                            Snackbar.Add("Warning: Failed to update yarn master details.", Severity.Warning);
+                        }
                     }
                 }
             }
@@ -505,6 +562,7 @@
             // Now save the stock adjustment
             if (_editStockModel.Id == Guid.Empty)
             {
+                await LoadYarns(); // Refresh yarns list first to include any newly created yarn
                 var existing = _stockList.FirstOrDefault(s => s.YarnId == _editStockModel.YarnId);
                 if (existing != null)
                 {
@@ -513,7 +571,7 @@
                     var response = await Http.PutAsJsonAsync($"api/Yarn/stock/{existing.Id}", existing);
                     if (response.IsSuccessStatusCode)
                     {
-                        Snackbar.Add("Stock updated successfully!", Severity.Success);
+                        Snackbar.Add("Stock adjusted successfully!", Severity.Success);
                     }
                 }
                 else
