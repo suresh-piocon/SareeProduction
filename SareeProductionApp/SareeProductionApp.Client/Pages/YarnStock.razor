@@ -186,6 +186,30 @@
     </DialogContent>
 </MudDialog>
 
+<!-- Create/Edit Category Dialog -->
+<MudDialog @bind-Visible="_isCategoryFormOpen" Options="_dialogOptions">
+    <TitleContent>
+        <MudText Typo="Typo.h6">
+            <MudIcon Icon="@(_editCategoryModel.Id == Guid.Empty ? Icons.Material.Filled.Add : Icons.Material.Filled.Edit)" Class="mr-2" />
+            @(_editCategoryModel.Id == Guid.Empty ? "Add New Category" : "Edit Category")
+        </MudText>
+    </TitleContent>
+    <DialogContent>
+        <EditForm Model="@_editCategoryModel" OnValidSubmit="SaveCategory">
+            <DataAnnotationsValidator />
+            <MudGrid>
+                <MudItem xs="12">
+                    <MudTextField Label="Category Name" @bind-Value="_editCategoryModel.Name" Required="true" Variant="Variant.Outlined" />
+                </MudItem>
+            </MudGrid>
+            <div class="d-flex justify-end mt-6">
+                <MudButton OnClick="CloseCategoryDialog" Class="mr-2">Cancel</MudButton>
+                <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary">Save</MudButton>
+            </div>
+        </EditForm>
+    </DialogContent>
+</MudDialog>
+
 <!-- Add/Edit Stock Dialog -->
 <MudDialog @bind-Visible="_isStockFormOpen" Options="_dialogOptions">
     <TitleContent>
@@ -201,7 +225,8 @@
                 @if (_editStockModel.Id == Guid.Empty)
                 {
                     <MudItem xs="12">
-                        <MudSelect T="Guid" Label="Select Yarn" @bind-Value="_editStockModel.YarnId" Required="true" Variant="Variant.Outlined">
+                        <MudSelect T="Guid" Label="Select Yarn" Value="_editStockModel.YarnId" ValueChanged="OnYarnSelected" Required="true" Variant="Variant.Outlined">
+                            <MudSelectItem T="Guid" Value="Guid.Empty">-- Select Yarn --</MudSelectItem>
                             @foreach (var yarn in _yarns)
                             {
                                 <MudSelectItem Value="@yarn.Id">@yarn.YarnType (@yarn.Color) - @yarn.Denier</MudSelectItem>
@@ -209,10 +234,19 @@
                         </MudSelect>
                     </MudItem>
                 }
-                else
+                
+                @if (_editStockModel.YarnId != Guid.Empty || _editStockModel.Id != Guid.Empty)
                 {
-                    <MudItem xs="12">
-                        <MudText Typo="Typo.subtitle1">Yarn Type: <b>@_editStockModel.Yarn?.YarnType (@_editStockModel.Yarn?.Color)</b></MudText>
+                    <MudItem xs="12" sm="6">
+                        <MudSelect T="string" Label="Yarn Category" @bind-Value="_selectedYarnCategory" Required="true" Variant="Variant.Outlined">
+                            @foreach (var category in _categories)
+                            {
+                                <MudSelectItem Value="@category.Name">@category.Name</MudSelectItem>
+                            }
+                        </MudSelect>
+                    </MudItem>
+                    <MudItem xs="12" sm="6">
+                        <MudTextField Label="Color" @bind-Value="_selectedYarnColor" Variant="Variant.Outlined" />
                     </MudItem>
                 }
                 <MudItem xs="12" sm="6">
@@ -245,6 +279,8 @@
     private SareeProductionApp.Client.Models.YarnStock _editStockModel = new();
     private decimal _initialStockQty = 0.000m;
     private decimal _initialStockWeight = 0.000m;
+    private string _selectedYarnCategory = "";
+    private string _selectedYarnColor = "";
 
     private List<YarnCategory> _categories = new();
     private YarnCategory _editCategoryModel = new();
@@ -390,9 +426,28 @@
         }
     }
 
+    private void OnYarnSelected(Guid yarnId)
+    {
+        _editStockModel.YarnId = yarnId;
+        var selectedYarn = _yarns.FirstOrDefault(y => y.Id == yarnId);
+        if (selectedYarn != null)
+        {
+            _selectedYarnCategory = selectedYarn.YarnType;
+            _selectedYarnColor = selectedYarn.Color ?? "";
+        }
+        else
+        {
+            _selectedYarnCategory = "";
+            _selectedYarnColor = "";
+        }
+        StateHasChanged();
+    }
+
     private void OpenAddStockDialog()
     {
-        _editStockModel = new SareeProductionApp.Client.Models.YarnStock { Id = Guid.Empty };
+        _editStockModel = new SareeProductionApp.Client.Models.YarnStock { Id = Guid.Empty, YarnId = Guid.Empty };
+        _selectedYarnCategory = "";
+        _selectedYarnColor = "";
         _isStockFormOpen = true;
     }
 
@@ -407,6 +462,8 @@
             Quantity = stock.Quantity,
             CreatedAt = stock.CreatedAt
         };
+        _selectedYarnCategory = stock.Yarn?.YarnType ?? "";
+        _selectedYarnColor = stock.Yarn?.Color ?? "";
         _isStockFormOpen = true;
     }
 
@@ -419,6 +476,33 @@
     {
         try
         {
+            // First, update Yarn Master details if Category or Color was modified
+            var yarnId = _editStockModel.YarnId;
+            var yarn = _yarns.FirstOrDefault(y => y.Id == yarnId);
+            if (yarn != null)
+            {
+                bool yarnModified = false;
+                if (yarn.YarnType != _selectedYarnCategory)
+                {
+                    yarn.YarnType = _selectedYarnCategory;
+                    yarnModified = true;
+                }
+                if (yarn.Color != _selectedYarnColor)
+                {
+                    yarn.Color = _selectedYarnColor;
+                    yarnModified = true;
+                }
+                if (yarnModified)
+                {
+                    var yarnResponse = await Http.PutAsJsonAsync($"api/Yarn/{yarn.Id}", yarn);
+                    if (!yarnResponse.IsSuccessStatusCode)
+                    {
+                        Snackbar.Add("Warning: Failed to update yarn master details.", Severity.Warning);
+                    }
+                }
+            }
+
+            // Now save the stock adjustment
             if (_editStockModel.Id == Guid.Empty)
             {
                 var existing = _stockList.FirstOrDefault(s => s.YarnId == _editStockModel.YarnId);
@@ -450,6 +534,7 @@
                 }
             }
             _isStockFormOpen = false;
+            await LoadYarns(); // reload yarns to update catalog views
             await LoadStock();
         }
         catch (Exception ex)
