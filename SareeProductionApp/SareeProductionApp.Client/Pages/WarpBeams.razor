@@ -1,0 +1,196 @@
+@page "/warp-beams"
+@inject HttpClient Http
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+
+<PageTitle>Warp Beams - Saree Production</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Large" Class="my-4">
+    <MudGrid>
+        <MudItem xs="12">
+            <MudCard Elevation="2" Class="pa-4">
+                <MudCardContent>
+                    <div class="d-flex align-center justify-space-between mb-4">
+                        <div>
+                            <MudText Typo="Typo.h5" Color="Color.Primary"><b>Warp Beam Registry</b></MudText>
+                            <MudText Typo="Typo.subtitle2" Color="Color.Secondary">Prepare and register warp beams ready for weaving</MudText>
+                        </div>
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.ViewQuilt" OnClick="OpenCreateDialog">
+                            Prepare New Beam
+                        </MudButton>
+                    </div>
+
+                    <MudTable Items="_beams" Loading="_loading" Elevation="0" Hover="true">
+                        <HeaderContent>
+                            <MudTh>Beam No / Code</MudTh>
+                            <MudTh>Warp Yarn Type</MudTh>
+                            <MudTh>Total Meters</MudTh>
+                            <MudTh>Design / Pattern Details</MudTh>
+                            <MudTh>Status</MudTh>
+                            <MudTh>Date Created</MudTh>
+                        </HeaderContent>
+                        <RowTemplate>
+                            <MudTd DataLabel="Beam No"><b>@context.BeamNo</b></MudTd>
+                            <MudTd DataLabel="Warp Yarn">@(context.Yarn?.YarnType ?? "-") - @(context.Yarn?.Color ?? "Raw")</MudTd>
+                            <MudTd DataLabel="Total Meters"><b>@context.TotalMeters.ToString("N2") m</b></MudTd>
+                            <MudTd DataLabel="Design Details">@(context.DesignDetails ?? "-")</MudTd>
+                            <MudTd DataLabel="Status">
+                                <MudChip T="string" Color="@GetStatusColor(context.Status)" Size="Size.Small">
+                                    @context.Status
+                                </MudChip>
+                            </MudTd>
+                            <MudTd DataLabel="Date Created">@context.CreatedAt.ToString("yyyy-MM-dd HH:mm")</MudTd>
+                        </RowTemplate>
+                        <PagerContent>
+                            <MudTablePager />
+                        </PagerContent>
+                    </MudTable>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+    </MudGrid>
+</MudContainer>
+
+<!-- New Beam Dialog -->
+<MudDialog @bind-Open="_isFormOpen" Options="_dialogOptions">
+    <TitleContent>
+        <MudText Typo="Typo.h6">
+            <MudIcon Icon="@Icons.Material.Filled.ViewQuilt" Class="mr-2" />
+            Prepare New Warp Beam
+        </MudText>
+    </TitleContent>
+    <DialogContent>
+        <EditForm Model="@_newBeam" OnValidSubmit="SaveBeam">
+            <DataAnnotationsValidator />
+            <MudGrid>
+                <MudItem xs="12">
+                    <MudTextField Label="Beam Serial No / Code" @bind-Value="_newBeam.BeamNo" Required="true" Variant="Variant.Outlined" Placeholder="e.g. BEAM-101" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudSelect T="Guid" Label="Warp Yarn Type" @bind-Value="_newBeam.YarnId" Required="true" Variant="Variant.Outlined">
+                        <MudSelectItem T="Guid" Value="Guid.Empty">-- Select Yarn --</MudSelectItem>
+                        @foreach (var y in _yarns)
+                        {
+                            <MudSelectItem Value="@y.Id">@y.YarnType (@y.Color)</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudNumericField Label="Total Length (Meters)" @bind-Value="_newBeam.TotalMeters" Format="N2" Min="0" Required="true" Variant="Variant.Outlined" HideSpinButtons="true" />
+                </MudItem>
+                <MudItem xs="12">
+                    <MudTextField Label="Design / Pattern Details" @bind-Value="_newBeam.DesignDetails" Lines="3" Variant="Variant.Outlined" Placeholder="Describe borders, body pattern, color combos, draft details..." />
+                </MudItem>
+            </MudGrid>
+            <div class="d-flex justify-end mt-6">
+                <MudButton OnClick="CloseDialog" Class="mr-2">Cancel</MudButton>
+                <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" Disabled="@(!IsFormValid())">Register Beam & Deduct Stock</MudButton>
+            </div>
+        </EditForm>
+    </DialogContent>
+</MudDialog>
+
+@code {
+    private List<WarpBeamMaster> _beams = new();
+    private List<YarnMaster> _yarns = new();
+    private WarpBeamMaster _newBeam = new();
+    private bool _loading = true;
+    private bool _isFormOpen = false;
+
+    private DialogOptions _dialogOptions = new() { MaxWidth = MaxWidth.Small, FullWidth = true, CloseButton = true };
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadBeams();
+        await LoadYarns();
+    }
+
+    private async Task LoadBeams()
+    {
+        _loading = true;
+        try
+        {
+            _beams = await Http.GetFromJsonAsync<List<WarpBeamMaster>>("api/Weaving/beams") ?? new();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add("Error loading beams: " + ex.Message, Severity.Error);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task LoadYarns()
+    {
+        try
+        {
+            _yarns = await Http.GetFromJsonAsync<List<YarnMaster>>("api/Yarn") ?? new();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add("Error loading yarns: " + ex.Message, Severity.Error);
+        }
+    }
+
+    private void OpenCreateDialog()
+    {
+        _newBeam = new WarpBeamMaster
+        {
+            BeamNo = "BEAM-" + DateTime.Now.ToString("yyyyMMdd-HHmmss"),
+            YarnId = Guid.Empty,
+            TotalMeters = 100.00m,
+            Status = "Available"
+        };
+        _isFormOpen = true;
+    }
+
+    private void CloseDialog()
+    {
+        _isFormOpen = false;
+    }
+
+    private bool IsFormValid()
+    {
+        if (string.IsNullOrWhiteSpace(_newBeam.BeamNo)) return false;
+        if (_newBeam.YarnId == Guid.Empty) return false;
+        if (_newBeam.TotalMeters <= 0) return false;
+        return true;
+    }
+
+    private async Task SaveBeam()
+    {
+        if (!IsFormValid()) return;
+
+        try
+        {
+            var response = await Http.PostAsJsonAsync("api/Weaving/beams", _newBeam);
+            if (response.IsSuccessStatusCode)
+            {
+                Snackbar.Add("Warp beam registered & yarn stock updated successfully!", Severity.Success);
+                _isFormOpen = false;
+                await LoadBeams();
+            }
+            else
+            {
+                Snackbar.Add("Failed to register warp beam: " + response.ReasonPhrase, Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add("Error saving warp beam: " + ex.Message, Severity.Error);
+        }
+    }
+
+    private Color GetStatusColor(string status)
+    {
+        return status switch
+        {
+            "Available" => Color.Success,
+            "Assigned" => Color.Warning,
+            "Completed" => Color.Info,
+            _ => Color.Default
+        };
+    }
+}

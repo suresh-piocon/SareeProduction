@@ -1,0 +1,298 @@
+@page "/weaver-issue"
+@inject HttpClient Http
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+
+<PageTitle>Weaver Issue - Saree Production</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Large" Class="my-4">
+    <MudGrid>
+        <MudItem xs="12">
+            <MudCard Elevation="2" Class="pa-4">
+                <MudCardContent>
+                    <div class="d-flex align-center justify-space-between mb-4">
+                        <div>
+                            <MudText Typo="Typo.h5" Color="Color.Primary"><b>Weaver Issue Workflow</b></MudText>
+                            <MudText Typo="Typo.subtitle2" Color="Color.Secondary">Issue warp beams and weft/zari yarn materials to weavers</MudText>
+                        </div>
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Outbox" OnClick="OpenCreateDialog">
+                            New Issue Transaction
+                        </MudButton>
+                    </div>
+
+                    <MudTable Items="_issues" Loading="_loading" Elevation="0" Hover="true">
+                        <HeaderContent>
+                            <MudTh>Issue No</MudTh>
+                            <MudTh>Weaver</MudTh>
+                            <MudTh>Warp Beam No</MudTh>
+                            <MudTh>Issue Date</MudTh>
+                            <MudTh>Expected Sarees</MudTh>
+                            <MudTh>Additional Yarn Issued</MudTh>
+                            <MudTh>Status</MudTh>
+                            <MudTh>Remarks</MudTh>
+                        </HeaderContent>
+                        <RowTemplate>
+                            <MudTd DataLabel="Issue No"><b>@context.IssueNo</b></MudTd>
+                            <MudTd DataLabel="Weaver">@(context.JobWorker?.Name ?? "-")</MudTd>
+                            <MudTd DataLabel="Warp Beam"><b>@(context.WarpBeam?.BeamNo ?? "-")</b> <i>(@(context.WarpBeam?.TotalMeters.ToString("N0") ?? "0") m)</i></MudTd>
+                            <MudTd DataLabel="Issue Date">@context.IssueDate.ToString("yyyy-MM-dd")</MudTd>
+                            <MudTd DataLabel="Expected Sarees"><MudChip T="string" Color="Color.Default" Size="Size.Small">@context.ExpectedSarees Sarees</MudChip></MudTd>
+                            <MudTd DataLabel="Yarn Issued">
+                                <div class="d-flex flex-column gap-1">
+                                    @if (context.Items.Count == 0)
+                                    {
+                                        <MudText Typo="Typo.body2" Color="Color.Secondary">None</MudText>
+                                    }
+                                    @foreach (var item in context.Items)
+                                    {
+                                        <MudText Typo="Typo.body2">
+                                            • @item.Yarn?.YarnType - @(item.Yarn?.Color ?? "Raw") (@item.QuantityIssued.ToString("F3") kg)
+                                        </MudText>
+                                    }
+                                </div>
+                            </MudTd>
+                            <MudTd DataLabel="Status">
+                                <MudChip T="string" Color="@GetStatusColor(context.Status)" Size="Size.Small">
+                                    @context.Status
+                                </MudChip>
+                            </MudTd>
+                            <MudTd DataLabel="Remarks">@(context.Remarks ?? "-")</MudTd>
+                        </RowTemplate>
+                        <PagerContent>
+                            <MudTablePager />
+                        </PagerContent>
+                    </MudTable>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+    </MudGrid>
+</MudContainer>
+
+<!-- New Issue Dialog -->
+<MudDialog @bind-Open="_isFormOpen" Options="_dialogOptions">
+    <TitleContent>
+        <MudText Typo="Typo.h6">
+            <MudIcon Icon="@Icons.Material.Filled.Outbox" Class="mr-2" />
+            Issue Beam & Materials to Weaver
+        </MudText>
+    </TitleContent>
+    <DialogContent>
+        <EditForm Model="@_newIssue" OnValidSubmit="SaveIssue">
+            <DataAnnotationsValidator />
+            <MudGrid>
+                <MudItem xs="12" sm="6">
+                    <MudTextField Label="Issue No" @bind-Value="_newIssue.IssueNo" Required="true" Variant="Variant.Outlined" Placeholder="e.g. ISS-001" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudDatePicker Label="Issue Date" @bind-Date="_issueDate" Required="true" Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudSelect T="Guid" Label="Select Weaver (Job Worker)" @bind-Value="_newIssue.JobWorkerId" Required="true" Variant="Variant.Outlined">
+                        <MudSelectItem T="Guid" Value="Guid.Empty">-- Select Weaver --</MudSelectItem>
+                        @foreach (var weaver in _weavers)
+                        {
+                            <MudSelectItem Value="@weaver.Id">@weaver.Name (@weaver.Place)</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudSelect T="Guid" Label="Select Warp Beam" @bind-Value="_newIssue.WarpBeamId" Required="true" Variant="Variant.Outlined">
+                        <MudSelectItem T="Guid" Value="Guid.Empty">-- Select Available Beam --</MudSelectItem>
+                        @foreach (var beam in _beams)
+                        {
+                            <MudSelectItem Value="@beam.Id">@beam.BeamNo (@beam.TotalMeters.ToString("N0") m - @beam.Yarn?.YarnType)</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudNumericField Label="Expected Saree Yield" @bind-Value="_newIssue.ExpectedSarees" Min="1" Required="true" Variant="Variant.Outlined" HideSpinButtons="true" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudTextField Label="Remarks / Special Instructions" @bind-Value="_newIssue.Remarks" Variant="Variant.Outlined" />
+                </MudItem>
+
+                <!-- Additional yarn section -->
+                <MudItem xs="12">
+                    <MudDivider Class="my-4" />
+                    <div class="d-flex align-center justify-space-between mb-2">
+                        <MudText Typo="Typo.subtitle1"><b>Additional Yarn Issued (Weft / Zari)</b></MudText>
+                        <MudButton StartIcon="@Icons.Material.Filled.Add" Variant="Variant.Text" Color="Color.Primary" OnClick="AddLineItem">Add Yarn Line</MudButton>
+                    </div>
+
+                    @for (int i = 0; i < _newIssue.Items.Count; i++)
+                    {
+                        var index = i;
+                        var item = _newIssue.Items[index];
+                        <div class="d-flex align-center gap-4 mb-3 border pa-2 rounded">
+                            <MudSelect T="Guid" Label="Yarn type" @bind-Value="item.YarnId" Required="true" Style="min-width: 200px;">
+                                <MudSelectItem T="Guid" Value="Guid.Empty">-- Select Yarn --</MudSelectItem>
+                                @foreach (var y in _yarns)
+                                {
+                                    <MudSelectItem Value="@y.Id">@y.YarnType (@y.Color)</MudSelectItem>
+                                }
+                            </MudSelect>
+                            <MudNumericField Label="Quantity Issued (kg)" @bind-Value="item.QuantityIssued" Format="F3" Required="true" HideSpinButtons="true" />
+                            <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" OnClick="@(() => RemoveLineItem(index))" />
+                        </div>
+                    }
+                </MudItem>
+            </MudGrid>
+            <div class="d-flex justify-end mt-6">
+                <MudButton OnClick="CloseDialog" Class="mr-2">Cancel</MudButton>
+                <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" Disabled="@(!IsFormValid())">Issue Beam & Deduct Stock</MudButton>
+            </div>
+        </EditForm>
+    </DialogContent>
+</MudDialog>
+
+@code {
+    private List<SareeProductionApp.Client.Models.WeaverIssue> _issues = new();
+    private List<JobWorker> _weavers = new();
+    private List<WarpBeamMaster> _beams = new();
+    private List<YarnMaster> _yarns = new();
+    private SareeProductionApp.Client.Models.WeaverIssue _newIssue = new();
+    private DateTime? _issueDate = DateTime.Today;
+    private bool _loading = true;
+    private bool _isFormOpen = false;
+
+    private DialogOptions _dialogOptions = new() { MaxWidth = MaxWidth.Medium, FullWidth = true, CloseButton = true };
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadIssues();
+        await LoadWeavers();
+        await LoadBeams();
+        await LoadYarns();
+    }
+
+    private async Task LoadIssues()
+    {
+        _loading = true;
+        try
+        {
+            _issues = await Http.GetFromJsonAsync<List<SareeProductionApp.Client.Models.WeaverIssue>>("api/Weaving/issues") ?? new();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add("Error loading issues: " + ex.Message, Severity.Error);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task LoadWeavers()
+    {
+        try
+        {
+            var workers = await Http.GetFromJsonAsync<List<JobWorker>>("api/JobWorkers") ?? new();
+            _weavers = workers.Where(w => w.WorkerType == "Weaver").ToList();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add("Error loading weavers: " + ex.Message, Severity.Error);
+        }
+    }
+
+    private async Task LoadBeams()
+    {
+        try
+        {
+            var allBeams = await Http.GetFromJsonAsync<List<WarpBeamMaster>>("api/Weaving/beams") ?? new();
+            _beams = allBeams.Where(b => b.Status == "Available").ToList();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add("Error loading beams: " + ex.Message, Severity.Error);
+        }
+    }
+
+    private async Task LoadYarns()
+    {
+        try
+        {
+            _yarns = await Http.GetFromJsonAsync<List<YarnMaster>>("api/Yarn") ?? new();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add("Error loading yarns: " + ex.Message, Severity.Error);
+        }
+    }
+
+    private void OpenCreateDialog()
+    {
+        _newIssue = new SareeProductionApp.Client.Models.WeaverIssue
+        {
+            IssueNo = "ISS-" + DateTime.Now.ToString("yyyyMMdd-HHmmss"),
+            JobWorkerId = Guid.Empty,
+            WarpBeamId = Guid.Empty,
+            ExpectedSarees = 10,
+            Items = new List<WeaverIssueItem>()
+        };
+        _issueDate = DateTime.Today;
+        _isFormOpen = true;
+    }
+
+    private void CloseDialog()
+    {
+        _isFormOpen = false;
+    }
+
+    private void AddLineItem()
+    {
+        _newIssue.Items.Add(new WeaverIssueItem { YarnId = Guid.Empty, QuantityIssued = 1.000m });
+    }
+
+    private void RemoveLineItem(int index)
+    {
+        _newIssue.Items.RemoveAt(index);
+    }
+
+    private bool IsFormValid()
+    {
+        if (string.IsNullOrWhiteSpace(_newIssue.IssueNo)) return false;
+        if (_newIssue.JobWorkerId == Guid.Empty) return false;
+        if (_newIssue.WarpBeamId == Guid.Empty) return false;
+        if (_newIssue.ExpectedSarees <= 0) return false;
+        if (_newIssue.Items.Any(i => i.YarnId == Guid.Empty || i.QuantityIssued <= 0)) return false;
+        return true;
+    }
+
+    private async Task SaveIssue()
+    {
+        if (!IsFormValid()) return;
+
+        try
+        {
+            _newIssue.IssueDate = _issueDate ?? DateTime.Today;
+            var response = await Http.PostAsJsonAsync("api/Weaving/issues", _newIssue);
+            if (response.IsSuccessStatusCode)
+            {
+                Snackbar.Add("Materials issued & beam assigned successfully!", Severity.Success);
+                _isFormOpen = false;
+                await LoadIssues();
+                await LoadBeams(); // Refresh available beams list
+            }
+            else
+            {
+                Snackbar.Add("Failed to issue materials: " + response.ReasonPhrase, Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add("Error saving issue transaction: " + ex.Message, Severity.Error);
+        }
+    }
+
+    private Color GetStatusColor(string status)
+    {
+        return status switch
+        {
+            "Issued" => Color.Warning,
+            "Partially Received" => Color.Info,
+            "Closed" => Color.Success,
+            _ => Color.Default
+        };
+    }
+}

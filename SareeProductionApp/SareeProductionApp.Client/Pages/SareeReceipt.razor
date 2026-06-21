@@ -1,0 +1,332 @@
+@page "/saree-receipt"
+@inject HttpClient Http
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+
+<PageTitle>Saree Receipt - Saree Production</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Large" Class="my-4">
+    <MudGrid>
+        <MudItem xs="12">
+            <MudCard Elevation="2" Class="pa-4">
+                <MudCardContent>
+                    <div class="d-flex align-center justify-space-between mb-4">
+                        <div>
+                            <MudText Typo="Typo.h5" Color="Color.Primary"><b>Saree Receipts from Weavers</b></MudText>
+                            <MudText Typo="Typo.subtitle2" Color="Color.Secondary">Receive finished sarees from weavers, record weight, and print tags</MudText>
+                        </div>
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Checkroom" OnClick="OpenCreateDialog">
+                            Receive Finished Sarees
+                        </MudButton>
+                    </div>
+
+                    <MudTable Items="_receipts" Loading="_loading" Elevation="0" Hover="true">
+                        <HeaderContent>
+                            <MudTh>Receipt No</MudTh>
+                            <MudTh>Weaver</MudTh>
+                            <MudTh>Weaver Issue Ref</MudTh>
+                            <MudTh>Warp Beam Ref</MudTh>
+                            <MudTh>Receipt Date</MudTh>
+                            <MudTh>Sarees Received</MudTh>
+                            <MudTh>Remarks</MudTh>
+                        </HeaderContent>
+                        <RowTemplate>
+                            <MudTd DataLabel="Receipt No"><b>@context.ReceiptNo</b></MudTd>
+                            <MudTd DataLabel="Weaver">@(context.JobWorker?.Name ?? "-")</MudTd>
+                            <MudTd DataLabel="Weaver Issue">@(context.WeaverIssue?.IssueNo ?? "-")</MudTd>
+                            <MudTd DataLabel="Warp Beam">@(context.WeaverIssue?.WarpBeam?.BeamNo ?? "-")</MudTd>
+                            <MudTd DataLabel="ReceiptDate">@context.ReceiptDate.ToString("yyyy-MM-dd")</MudTd>
+                            <MudTd DataLabel="Sarees Received">
+                                <div class="d-flex flex-column gap-1">
+                                    @foreach (var item in context.Items)
+                                    {
+                                        <MudText Typo="Typo.body2">
+                                            • Tag: <b>@(item.SareeNo ?? "No Tag")</b> | @(item.SareeType ?? "Plain") ➔ <i>Weight: @(item.WeightGrams?.ToString("F0") ?? "-") g</i>
+                                            <MudChip T="string" Color="@GetSareeStatusColor(item.Status)" Size="Size.Small" Variant="Variant.Text">
+                                                @item.Status
+                                            </MudChip>
+                                        </MudText>
+                                    }
+                                </div>
+                            </MudTd>
+                            <MudTd DataLabel="Remarks">@(context.Remarks ?? "-")</MudTd>
+                        </RowTemplate>
+                        <PagerContent>
+                            <MudTablePager />
+                        </PagerContent>
+                    </MudTable>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+    </MudGrid>
+</MudContainer>
+
+<!-- Receive Sarees Dialog -->
+<MudDialog @bind-Open="_isFormOpen" Options="_dialogOptions">
+    <TitleContent>
+        <MudText Typo="Typo.h6">
+            <MudIcon Icon="@Icons.Material.Filled.Checkroom" Class="mr-2" />
+            Receive Finished Sarees from Weaver
+        </MudText>
+    </TitleContent>
+    <DialogContent>
+        <EditForm Model="@_newReceipt" OnValidSubmit="SaveReceipt">
+            <DataAnnotationsValidator />
+            <MudGrid>
+                <MudItem xs="12" sm="4">
+                    <MudTextField Label="Receipt No" @bind-Value="_newReceipt.ReceiptNo" Required="true" Variant="Variant.Outlined" Placeholder="e.g. REC-SR-001" />
+                </MudItem>
+                <MudItem xs="12" sm="4">
+                    <MudDatePicker Label="Receipt Date" @bind-Date="_receiptDate" Required="true" Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12" sm="4">
+                    <MudSelect T="Guid" Label="Select Weaver" Value="_selectedWeaverId" ValueChanged="OnWeaverChanged" Required="true" Variant="Variant.Outlined">
+                        <MudSelectItem T="Guid" Value="Guid.Empty">-- Select Weaver --</MudSelectItem>
+                        @foreach (var w in _weavers)
+                        {
+                            <MudSelectItem Value="@w.Id">@w.Name (@w.Place)</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+
+                @if (_selectedWeaverId != Guid.Empty)
+                {
+                    <MudItem xs="12">
+                        <MudSelect T="Guid" Label="Link to Weaver Issue / Beam" Value="_newReceipt.WeaverIssueId" ValueChanged="OnIssueChanged" Required="true" Variant="Variant.Outlined">
+                            <MudSelectItem T="Guid" Value="Guid.Empty">-- Select Weaver Issue --</MudSelectItem>
+                            @foreach (var iss in _pendingIssues)
+                            {
+                                <MudSelectItem Value="@iss.Id">@iss.IssueNo (@(iss.WarpBeam?.BeamNo ?? "No Beam") - Expected: @iss.ExpectedSarees)</MudSelectItem>
+                            }
+                        </MudSelect>
+                    </MudItem>
+                }
+
+                <MudItem xs="12">
+                    <MudTextField Label="Remarks" @bind-Value="_newReceipt.Remarks" Variant="Variant.Outlined" />
+                </MudItem>
+
+                <!-- Items section -->
+                <MudItem xs="12">
+                    <MudDivider Class="my-4" />
+                    <div class="d-flex align-center justify-space-between mb-2">
+                        <MudText Typo="Typo.subtitle1"><b>Saree Production Details</b></MudText>
+                        <div>
+                            @if (_newReceipt.WeaverIssueId != Guid.Empty)
+                            {
+                                <MudButton StartIcon="@Icons.Material.Filled.Autorenew" Variant="Variant.Text" Color="Color.Secondary" OnClick="AutoGenerateLines" Class="mr-2">Auto-Generate Lines</MudButton>
+                            }
+                            <MudButton StartIcon="@Icons.Material.Filled.Add" Variant="Variant.Text" Color="Color.Primary" OnClick="AddLineItem">Add Saree</MudButton>
+                        </div>
+                    </div>
+
+                    @for (int i = 0; i < _newReceipt.Items.Count; i++)
+                    {
+                        var index = i;
+                        var item = _newReceipt.Items[index];
+                        <div class="d-flex align-center gap-4 mb-3 border pa-2 rounded">
+                            <MudTextField Label="Saree Tag/Serial No" @bind-Value="item.SareeNo" Required="true" Placeholder="e.g. S-001" />
+                            <MudTextField Label="Design / Type" @bind-Value="item.SareeType" Required="true" Placeholder="e.g. Silk Zari Jari" />
+                            <MudNumericField Label="Weight (Grams)" @bind-Value="item.WeightGrams" Format="F0" Min="0" Required="true" HideSpinButtons="true" />
+                            <MudSelect T="string" Label="Status" @bind-Value="item.Status" Required="true" Style="min-width: 120px;">
+                                <MudSelectItem Value="@("Received")">Received</MudSelectItem>
+                                <MudSelectItem Value="@("Quality Checked")">Quality Checked</MudSelectItem>
+                                <MudSelectItem Value="@("In Stock")">In Stock</MudSelectItem>
+                            </MudSelect>
+                            <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" OnClick="@(() => RemoveLineItem(index))" Disabled="@(_newReceipt.Items.Count <= 1)" />
+                        </div>
+                    }
+                </MudItem>
+            </MudGrid>
+            <div class="d-flex justify-end mt-6">
+                <MudButton OnClick="CloseDialog" Class="mr-2">Cancel</MudButton>
+                <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" Disabled="@(!IsFormValid())">Record Receipt & Complete Issue</MudButton>
+            </div>
+        </EditForm>
+    </DialogContent>
+</MudDialog>
+
+@code {
+    private List<SareeProductionApp.Client.Models.SareeReceipt> _receipts = new();
+    private List<JobWorker> _weavers = new();
+    private List<SareeProductionApp.Client.Models.WeaverIssue> _allIssues = new();
+    private List<SareeProductionApp.Client.Models.WeaverIssue> _pendingIssues = new();
+    private SareeProductionApp.Client.Models.SareeReceipt _newReceipt = new();
+
+    private Guid _selectedWeaverId = Guid.Empty;
+    private DateTime? _receiptDate = DateTime.Today;
+    private bool _loading = true;
+    private bool _isFormOpen = false;
+
+    private DialogOptions _dialogOptions = new() { MaxWidth = MaxWidth.Medium, FullWidth = true, CloseButton = true };
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadReceipts();
+        await LoadWeavers();
+        await LoadIssues();
+    }
+
+    private async Task LoadReceipts()
+    {
+        _loading = true;
+        try
+        {
+            _receipts = await Http.GetFromJsonAsync<List<SareeProductionApp.Client.Models.SareeReceipt>>("api/Weaving/saree-receipts") ?? new();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add("Error loading receipts: " + ex.Message, Severity.Error);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task LoadWeavers()
+    {
+        try
+        {
+            var workers = await Http.GetFromJsonAsync<List<JobWorker>>("api/JobWorkers") ?? new();
+            _weavers = workers.Where(w => w.WorkerType == "Weaver").ToList();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add("Error loading weavers: " + ex.Message, Severity.Error);
+        }
+    }
+
+    private async Task LoadIssues()
+    {
+        try
+        {
+            _allIssues = await Http.GetFromJsonAsync<List<SareeProductionApp.Client.Models.WeaverIssue>>("api/Weaving/issues") ?? new();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add("Error loading issues: " + ex.Message, Severity.Error);
+        }
+    }
+
+    private void OpenCreateDialog()
+    {
+        _newReceipt = new SareeProductionApp.Client.Models.SareeReceipt
+        {
+            ReceiptNo = "REC-SR-" + DateTime.Now.ToString("yyyyMMdd-HHmmss"),
+            JobWorkerId = Guid.Empty,
+            WeaverIssueId = Guid.Empty,
+            Items = new List<SareeReceiptItem> { new() { SareeNo = "", SareeType = "", WeightGrams = 650.00m, Status = "Received" } }
+        };
+        _selectedWeaverId = Guid.Empty;
+        _receiptDate = DateTime.Today;
+        _pendingIssues = new();
+        _isFormOpen = true;
+    }
+
+    private void CloseDialog()
+    {
+        _isFormOpen = false;
+    }
+
+    private void OnWeaverChanged(Guid weaverId)
+    {
+        _selectedWeaverId = weaverId;
+        _newReceipt.JobWorkerId = weaverId;
+        _newReceipt.WeaverIssueId = Guid.Empty;
+
+        // Filter active/pending issues for selected weaver
+        _pendingIssues = _allIssues
+            .Where(i => i.JobWorkerId == weaverId && (i.Status == "Issued" || i.Status == "Partially Received"))
+            .ToList();
+
+        _newReceipt.Items = new List<SareeReceiptItem> { new() { SareeNo = "", SareeType = "", WeightGrams = 650.00m, Status = "Received" } };
+    }
+
+    private void OnIssueChanged(Guid issueId)
+    {
+        _newReceipt.WeaverIssueId = issueId;
+        _newReceipt.Items = new List<SareeReceiptItem> { new() { SareeNo = "", SareeType = "", WeightGrams = 650.00m, Status = "Received" } };
+    }
+
+    private void AddLineItem()
+    {
+        int nextNum = _newReceipt.Items.Count + 1;
+        _newReceipt.Items.Add(new SareeReceiptItem { SareeNo = $"S-{nextNum:00}", SareeType = "Silk Saree", WeightGrams = 650.00m, Status = "Received" });
+    }
+
+    private void RemoveLineItem(int index)
+    {
+        if (_newReceipt.Items.Count > 1)
+        {
+            _newReceipt.Items.RemoveAt(index);
+        }
+    }
+
+    private void AutoGenerateLines()
+    {
+        var issue = _pendingIssues.FirstOrDefault(i => i.Id == _newReceipt.WeaverIssueId);
+        if (issue != null)
+        {
+            _newReceipt.Items.Clear();
+            for (int i = 1; i <= issue.ExpectedSarees; i++)
+            {
+                _newReceipt.Items.Add(new SareeReceiptItem
+                {
+                    SareeNo = $"{issue.IssueNo}-S{i:00}",
+                    SareeType = "Silk Saree",
+                    WeightGrams = 650.00m,
+                    Status = "Received"
+                });
+            }
+            Snackbar.Add($"Auto-generated {issue.ExpectedSarees} saree line items based on issue expectations.", Severity.Info);
+        }
+    }
+
+    private bool IsFormValid()
+    {
+        if (string.IsNullOrWhiteSpace(_newReceipt.ReceiptNo)) return false;
+        if (_newReceipt.JobWorkerId == Guid.Empty) return false;
+        if (_newReceipt.WeaverIssueId == Guid.Empty) return false;
+        if (_newReceipt.Items.Any(i => string.IsNullOrWhiteSpace(i.SareeNo) || string.IsNullOrWhiteSpace(i.SareeType) || i.WeightGrams <= 0)) return false;
+        return true;
+    }
+
+    private async Task SaveReceipt()
+    {
+        if (!IsFormValid()) return;
+
+        try
+        {
+            _newReceipt.ReceiptDate = _receiptDate ?? DateTime.Today;
+            var response = await Http.PostAsJsonAsync("api/Weaving/saree-receipts", _newReceipt);
+            if (response.IsSuccessStatusCode)
+            {
+                Snackbar.Add("Saree receipt recorded & yield updated successfully!", Severity.Success);
+                _isFormOpen = false;
+                await LoadReceipts();
+                await LoadIssues(); // Refresh issue status
+            }
+            else
+            {
+                Snackbar.Add("Failed to record saree receipt: " + response.ReasonPhrase, Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add("Error saving receipt: " + ex.Message, Severity.Error);
+        }
+    }
+
+    private Color GetSareeStatusColor(string status)
+    {
+        return status switch
+        {
+            "Received" => Color.Warning,
+            "Quality Checked" => Color.Info,
+            "In Stock" => Color.Success,
+            "Sold" => Color.Secondary,
+            _ => Color.Default
+        };
+    }
+}

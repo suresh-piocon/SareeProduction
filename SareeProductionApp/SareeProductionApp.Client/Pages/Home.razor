@@ -1,0 +1,213 @@
+@page "/"
+@inject HttpClient Http
+@inject ISnackbar Snackbar
+@inject NavigationManager Navigation
+
+<PageTitle>Dashboard - Saree Production</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Large" Class="my-4">
+    <MudText Typo="Typo.h4" Class="mb-2" Color="Color.Primary"><b>Saree Production Dashboard</b></MudText>
+    <MudText Typo="Typo.subtitle1" Class="mb-6" Color="Color.Secondary">Real-time overview of yarn inventory, dyeing jobs, and weaving yields</MudText>
+
+    @if (_loading)
+    {
+        <div class="d-flex justify-center my-12">
+            <MudProgressCircular Color="Color.Primary" Size="Size.Large" Indeterminate="true" />
+        </div>
+    }
+    else
+    {
+        <MudGrid>
+            <!-- STATS CARDS -->
+            <MudItem xs="12" sm="6" md="3">
+                <MudCard Elevation="4" Class="pa-2 border-l-4 border-indigo-500">
+                    <MudCardHeader>
+                        <CardHeaderContent>
+                            <MudText Typo="Typo.subtitle2" Color="Color.Secondary">Total Job Workers</MudText>
+                            <MudText Typo="Typo.h4"><b>@_stats.WorkersCount</b></MudText>
+                        </CardHeaderContent>
+                        <CardHeaderActions>
+                            <MudAvatar Color="Color.Primary" Variant="Variant.Filled" Size="Size.Medium" Class="mt-2 mr-2">
+                                <MudIcon Icon="@Icons.Material.Filled.People" />
+                            </MudAvatar>
+                        </CardHeaderActions>
+                    </MudCardHeader>
+                </MudCard>
+            </MudItem>
+
+            <MudItem xs="12" sm="6" md="3">
+                <MudCard Elevation="4" Class="pa-2 border-l-4 border-amber-500">
+                    <MudCardHeader>
+                        <CardHeaderContent>
+                            <MudText Typo="Typo.subtitle2" Color="Color.Secondary">Pending Dyeing Jobs</MudText>
+                            <MudText Typo="Typo.h4"><b>@_stats.ActiveDeliveries</b></MudText>
+                        </CardHeaderContent>
+                        <CardHeaderActions>
+                            <MudAvatar Color="Color.Warning" Variant="Variant.Filled" Size="Size.Medium" Class="mt-2 mr-2">
+                                <MudIcon Icon="@Icons.Material.Filled.LocalShipping" />
+                            </MudAvatar>
+                        </CardHeaderActions>
+                    </MudCardHeader>
+                </MudCard>
+            </MudItem>
+
+            <MudItem xs="12" sm="6" md="3">
+                <MudCard Elevation="4" Class="pa-2 border-l-4 border-blue-500">
+                    <MudCardHeader>
+                        <CardHeaderContent>
+                            <MudText Typo="Typo.subtitle2" Color="Color.Secondary">Active Weavers</MudText>
+                            <MudText Typo="Typo.h4"><b>@_stats.ActiveWeavers</b></MudText>
+                        </CardHeaderContent>
+                        <CardHeaderActions>
+                            <MudAvatar Color="Color.Info" Variant="Variant.Filled" Size="Size.Medium" Class="mt-2 mr-2">
+                                <MudIcon Icon="@Icons.Material.Filled.Outbox" />
+                            </MudAvatar>
+                        </CardHeaderActions>
+                    </MudCardHeader>
+                </MudCard>
+            </MudItem>
+
+            <MudItem xs="12" sm="6" md="3">
+                <MudCard Elevation="4" Class="pa-2 border-l-4 border-emerald-500">
+                    <MudCardHeader>
+                        <CardHeaderContent>
+                            <MudText Typo="Typo.subtitle2" Color="Color.Secondary">Sarees Produced</MudText>
+                            <MudText Typo="Typo.h4"><b>@_stats.TotalSareesCount</b></MudText>
+                        </CardHeaderContent>
+                        <CardHeaderActions>
+                            <MudAvatar Color="Color.Success" Variant="Variant.Filled" Size="Size.Medium" Class="mt-2 mr-2">
+                                <MudIcon Icon="@Icons.Material.Filled.Checkroom" />
+                            </MudAvatar>
+                        </CardHeaderActions>
+                    </MudCardHeader>
+                </MudCard>
+            </MudItem>
+
+            <!-- LOW STOCK WARNINGS -->
+            <MudItem xs="12" md="8">
+                <MudCard Elevation="4" Class="pa-4 h-100">
+                    <MudCardHeader>
+                        <CardHeaderContent>
+                            <MudText Typo="Typo.h6"><b>Inventory Stock Alerts</b></MudText>
+                        </CardHeaderContent>
+                    </MudCardHeader>
+                    <MudCardContent>
+                        @if (_stats.LowStock.Count == 0)
+                        {
+                            <div class="d-flex align-center gap-3 pa-4 border rounded border-emerald-500 bg-emerald-50 dark:bg-emerald-950/20">
+                                <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Color="Color.Success" Size="Size.Large" />
+                                <div>
+                                    <MudText Typo="Typo.subtitle1" Color="Color.Success"><b>All Stock Levels Healthy</b></MudText>
+                                    <MudText Typo="Typo.body2" Color="Color.Secondary">All yarn types have sufficient stock (above 5.0 kg).</MudText>
+                                </div>
+                            </div>
+                        }
+                        else
+                        {
+                            <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined" Class="mb-4">
+                                The following yarn types are running low on stock and require attention.
+                            </MudAlert>
+
+                            <MudTable Items="_stats.LowStock" Elevation="0" Dense="true">
+                                <HeaderContent>
+                                    <MudTh>Yarn Type</MudTh>
+                                    <MudTh>Color</MudTh>
+                                    <MudTh>Current Qty</MudTh>
+                                    <MudTh>Action</MudTh>
+                                </HeaderContent>
+                                <RowTemplate>
+                                    <MudTd DataLabel="Yarn Type"><b>@context.YarnType</b></MudTd>
+                                    <MudTd DataLabel="Color">@(context.Color ?? "-")</MudTd>
+                                    <MudTd DataLabel="Current Qty">
+                                        <MudText Color="Color.Error"><b>@context.Quantity.ToString("F3") kg</b></MudText>
+                                    </MudTd>
+                                    <MudTd DataLabel="Action">
+                                        <MudButton Variant="Variant.Text" Color="Color.Primary" Size="Size.Small" OnClick='() => Navigation.NavigateTo("yarn-stock")'>
+                                            Purchase / Restock
+                                        </MudButton>
+                                    </MudTd>
+                                </RowTemplate>
+                            </MudTable>
+                        }
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+
+            <!-- QUICK LINKS -->
+            <MudItem xs="12" md="4">
+                <MudCard Elevation="4" Class="pa-4 h-100">
+                    <MudCardHeader>
+                        <CardHeaderContent>
+                            <MudText Typo="Typo.h6"><b>Quick Actions</b></MudText>
+                        </CardHeaderContent>
+                    </MudCardHeader>
+                    <MudCardContent>
+                        <div class="d-flex flex-column gap-3">
+                            <MudButton Variant="Variant.Filled" Color="Color.Primary" FullWidth="true" StartIcon="@Icons.Material.Filled.People" OnClick='() => Navigation.NavigateTo("job-workers")'>
+                                Manage Job Workers
+                            </MudButton>
+                            <MudButton Variant="Variant.Outlined" Color="Color.Primary" FullWidth="true" StartIcon="@Icons.Material.Filled.Inventory" OnClick='() => Navigation.NavigateTo("yarn-stock")'>
+                                Adjust Yarn Stock
+                            </MudButton>
+                            <MudButton Variant="Variant.Outlined" Color="Color.Primary" FullWidth="true" StartIcon="@Icons.Material.Filled.LocalShipping" OnClick='() => Navigation.NavigateTo("dyeing-delivery")'>
+                                Deliver Yarn to Dyer
+                            </MudButton>
+                            <MudButton Variant="Variant.Outlined" Color="Color.Primary" FullWidth="true" StartIcon="@Icons.Material.Filled.ViewQuilt" OnClick='() => Navigation.NavigateTo("warp-beams")'>
+                                Prepare Warp Beam
+                            </MudButton>
+                            <MudButton Variant="Variant.Outlined" Color="Color.Primary" FullWidth="true" StartIcon="@Icons.Material.Filled.Outbox" OnClick='() => Navigation.NavigateTo("weaver-issue")'>
+                                Issue Beam to Weaver
+                            </MudButton>
+                            <MudButton Variant="Variant.Outlined" Color="Color.Primary" FullWidth="true" StartIcon="@Icons.Material.Filled.Checkroom" OnClick='() => Navigation.NavigateTo("saree-receipt")'>
+                                Receive Finished Saree
+                            </MudButton>
+                        </div>
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+        </MudGrid>
+    }
+</MudContainer>
+
+@code {
+    private DashboardStats _stats = new();
+    private bool _loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadStats();
+    }
+
+    private async Task LoadStats()
+    {
+        _loading = true;
+        try
+        {
+            _stats = await Http.GetFromJsonAsync<DashboardStats>("api/Dashboard/stats") ?? new();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add("Error loading dashboard metrics: " + ex.Message, Severity.Error);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    public class DashboardStats
+    {
+        public int WorkersCount { get; set; }
+        public int ActiveDeliveries { get; set; }
+        public int ActiveWeavers { get; set; }
+        public int TotalSareesCount { get; set; }
+        public List<LowStockItem> LowStock { get; set; } = new();
+    }
+
+    public class LowStockItem
+    {
+        public string YarnType { get; set; } = string.Empty;
+        public string? Color { get; set; }
+        public decimal Quantity { get; set; }
+    }
+}

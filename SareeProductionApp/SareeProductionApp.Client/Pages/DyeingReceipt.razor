@@ -1,0 +1,329 @@
+@page "/dyeing-receipt"
+@inject HttpClient Http
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+
+<PageTitle>Yarn Receipt - Saree Production</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Large" Class="my-4">
+    <MudGrid>
+        <MudItem xs="12">
+            <MudCard Elevation="2" Class="pa-4">
+                <MudCardContent>
+                    <div class="d-flex align-center justify-space-between mb-4">
+                        <div>
+                            <MudText Typo="Typo.h5" Color="Color.Primary"><b>Yarn Receipt from Dyers</b></MudText>
+                            <MudText Typo="Typo.subtitle2" Color="Color.Secondary">Record dyed yarn received back from dyers and track wastage</MudText>
+                        </div>
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.AssignmentReturned" OnClick="OpenCreateDialog">
+                            New Receipt Batch
+                        </MudButton>
+                    </div>
+
+                    <MudTable Items="_receipts" Loading="_loading" Elevation="0" Hover="true">
+                        <HeaderContent>
+                            <MudTh>Receipt No</MudTh>
+                            <MudTh>Dyer / Job Worker</MudTh>
+                            <MudTh>Delivery No Ref</MudTh>
+                            <MudTh>Receipt Date</MudTh>
+                            <MudTh>Items Received</MudTh>
+                            <MudTh>Remarks</MudTh>
+                        </HeaderContent>
+                        <RowTemplate>
+                            <MudTd DataLabel="Receipt No"><b>@context.ReceiptNo</b></MudTd>
+                            <MudTd DataLabel="Dyer">@(context.JobWorker?.Name ?? "-")</MudTd>
+                            <MudTd DataLabel="Delivery No">@(context.Delivery?.DeliveryNo ?? "Direct/No Ref")</MudTd>
+                            <MudTd DataLabel="Receipt Date">@context.ReceiptDate.ToString("yyyy-MM-dd")</MudTd>
+                            <MudTd DataLabel="Items Received">
+                                <div class="d-flex flex-column gap-1">
+                                    @foreach (var item in context.Items)
+                                    {
+                                        <MudText Typo="Typo.body2">
+                                            • @item.Yarn?.YarnType - <b>@(item.ReceivedColor ?? "Default Color")</b> (@item.QuantityKg.ToString("F3") kg) <i>[Wastage: @item.WastageKg.ToString("F3") kg]</i>
+                                        </MudText>
+                                    }
+                                </div>
+                            </MudTd>
+                            <MudTd DataLabel="Remarks">@(context.Remarks ?? "-")</MudTd>
+                        </RowTemplate>
+                        <PagerContent>
+                            <MudTablePager />
+                        </PagerContent>
+                    </MudTable>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+    </MudGrid>
+</MudContainer>
+
+<!-- New Receipt Dialog -->
+<MudDialog @bind-Open="_isFormOpen" Options="_dialogOptions">
+    <TitleContent>
+        <MudText Typo="Typo.h6">
+            <MudIcon Icon="@Icons.Material.Filled.AssignmentReturned" Class="mr-2" />
+            New Yarn Receipt Batch
+        </MudText>
+    </TitleContent>
+    <DialogContent>
+        <EditForm Model="@_newReceipt" OnValidSubmit="SaveReceipt">
+            <DataAnnotationsValidator />
+            <MudGrid>
+                <MudItem xs="12" sm="4">
+                    <MudTextField Label="Receipt No" @bind-Value="_newReceipt.ReceiptNo" Required="true" Variant="Variant.Outlined" Placeholder="e.g. REC-001" />
+                </MudItem>
+                <MudItem xs="12" sm="4">
+                    <MudDatePicker Label="Receipt Date" @bind-Date="_receiptDate" Required="true" Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12" sm="4">
+                    <MudSelect T="Guid" Label="Select Dyer" Value="_selectedDyerId" ValueChanged="OnDyerChanged" Required="true" Variant="Variant.Outlined">
+                        <MudSelectItem T="Guid" Value="Guid.Empty">-- Select Dyer --</MudSelectItem>
+                        @foreach (var dyer in _dyers)
+                        {
+                            <MudSelectItem Value="@dyer.Id">@dyer.Name (@dyer.Place)</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+                
+                @if (_selectedDyerId != Guid.Empty)
+                {
+                    <MudItem xs="12">
+                        <MudSelect T="Guid?" Label="Link to Delivery Batch" Value="_newReceipt.DeliveryId" ValueChanged="OnDeliveryChanged" Variant="Variant.Outlined" HelperText="Select pending deliveries to auto-populate items">
+                            <MudSelectItem T="Guid?" Value="null">-- Select Delivery (Optional) --</MudSelectItem>
+                            @foreach (var del in _pendingDeliveries)
+                            {
+                                <MudSelectItem T="Guid?" Value="@del.Id">@del.DeliveryNo (@del.DeliveryDate.ToString("yyyy-MM-dd"))</MudSelectItem>
+                            }
+                        </MudSelect>
+                    </MudItem>
+                }
+
+                <MudItem xs="12">
+                    <MudTextField Label="Remarks" @bind-Value="_newReceipt.Remarks" Lines="2" Variant="Variant.Outlined" />
+                </MudItem>
+
+                <!-- Items section -->
+                <MudItem xs="12">
+                    <MudDivider Class="my-4" />
+                    <div class="d-flex align-center justify-space-between mb-2">
+                        <MudText Typo="Typo.subtitle1"><b>Dyed Yarn Items Received</b></MudText>
+                        @if (_newReceipt.DeliveryId == null)
+                        {
+                            <MudButton StartIcon="@Icons.Material.Filled.Add" Variant="Variant.Text" Color="Color.Primary" OnClick="AddLineItem">Add Item Line</MudButton>
+                        }
+                    </div>
+
+                    @for (int i = 0; i < _newReceipt.Items.Count; i++)
+                    {
+                        var index = i;
+                        var item = _newReceipt.Items[index];
+                        <div class="d-flex align-center gap-4 mb-3 border pa-2 rounded">
+                            <MudSelect T="Guid" Label="Yarn type" @bind-Value="item.YarnId" Required="true" Style="min-width: 150px;" Disabled="@(_newReceipt.DeliveryId != null)">
+                                <MudSelectItem T="Guid" Value="Guid.Empty">-- Select Yarn --</MudSelectItem>
+                                @foreach (var y in _yarns)
+                                {
+                                    <MudSelectItem Value="@y.Id">@y.YarnType (@y.Color)</MudSelectItem>
+                                }
+                            </MudSelect>
+                            <MudTextField Label="Received Color" @bind-Value="item.ReceivedColor" Required="true" />
+                            <MudNumericField Label="Quantity (kg)" @bind-Value="item.QuantityKg" Format="F3" Required="true" HideSpinButtons="true" />
+                            <MudNumericField Label="Wastage (kg)" @bind-Value="item.WastageKg" Format="F3" Required="true" HideSpinButtons="true" />
+                            @if (_newReceipt.DeliveryId == null)
+                            {
+                                <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" OnClick="@(() => RemoveLineItem(index))" Disabled="@(_newReceipt.Items.Count <= 1)" />
+                            }
+                        </div>
+                    }
+                </MudItem>
+            </MudGrid>
+            <div class="d-flex justify-end mt-6">
+                <MudButton OnClick="CloseDialog" Class="mr-2">Cancel</MudButton>
+                <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" Disabled="@(!IsFormValid())">Receive & Add Stock</MudButton>
+            </div>
+        </EditForm>
+    </DialogContent>
+</MudDialog>
+
+@code {
+    private List<DyeingYarnReceipt> _receipts = new();
+    private List<JobWorker> _dyers = new();
+    private List<DyeingYarnDelivery> _allDeliveries = new();
+    private List<DyeingYarnDelivery> _pendingDeliveries = new();
+    private List<YarnMaster> _yarns = new();
+    private DyeingYarnReceipt _newReceipt = new();
+    
+    private Guid _selectedDyerId = Guid.Empty;
+    private DateTime? _receiptDate = DateTime.Today;
+    private bool _loading = true;
+    private bool _isFormOpen = false;
+
+    private DialogOptions _dialogOptions = new() { MaxWidth = MaxWidth.Medium, FullWidth = true, CloseButton = true };
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadReceipts();
+        await LoadDyers();
+        await LoadDeliveries();
+        await LoadYarns();
+    }
+
+    private async Task LoadReceipts()
+    {
+        _loading = true;
+        try
+        {
+            _receipts = await Http.GetFromJsonAsync<List<DyeingYarnReceipt>>("api/Dyeing/receipts") ?? new();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add("Error loading receipts: " + ex.Message, Severity.Error);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task LoadDyers()
+    {
+        try
+        {
+            var workers = await Http.GetFromJsonAsync<List<JobWorker>>("api/JobWorkers") ?? new();
+            _dyers = workers.Where(w => w.WorkerType == "Dyer").ToList();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add("Error loading dyers: " + ex.Message, Severity.Error);
+        }
+    }
+
+    private async Task LoadDeliveries()
+    {
+        try
+        {
+            _allDeliveries = await Http.GetFromJsonAsync<List<DyeingYarnDelivery>>("api/Dyeing/deliveries") ?? new();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add("Error loading deliveries: " + ex.Message, Severity.Error);
+        }
+    }
+
+    private async Task LoadYarns()
+    {
+        try
+        {
+            _yarns = await Http.GetFromJsonAsync<List<YarnMaster>>("api/Yarn") ?? new();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add("Error loading yarns: " + ex.Message, Severity.Error);
+        }
+    }
+
+    private void OpenCreateDialog()
+    {
+        _newReceipt = new DyeingYarnReceipt
+        {
+            ReceiptNo = "REC-" + DateTime.Now.ToString("yyyyMMdd-HHmmss"),
+            JobWorkerId = Guid.Empty,
+            Items = new List<DyeingYarnReceiptItem> { new() { YarnId = Guid.Empty, QuantityKg = 1.000m, WastageKg = 0.000m } }
+        };
+        _selectedDyerId = Guid.Empty;
+        _receiptDate = DateTime.Today;
+        _pendingDeliveries = new();
+        _isFormOpen = true;
+    }
+
+    private void CloseDialog()
+    {
+        _isFormOpen = false;
+    }
+
+    private void OnDyerChanged(Guid dyerId)
+    {
+        _selectedDyerId = dyerId;
+        _newReceipt.JobWorkerId = dyerId;
+        _newReceipt.DeliveryId = null;
+        
+        // Filter pending deliveries for selected dyer
+        _pendingDeliveries = _allDeliveries
+            .Where(d => d.JobWorkerId == dyerId && d.Status == "Pending")
+            .ToList();
+
+        // Reset items to single blank item
+        _newReceipt.Items = new List<DyeingYarnReceiptItem> { new() { YarnId = Guid.Empty, QuantityKg = 1.000m, WastageKg = 0.000m } };
+    }
+
+    private void OnDeliveryChanged(Guid? deliveryId)
+    {
+        _newReceipt.DeliveryId = deliveryId;
+        if (deliveryId.HasValue)
+        {
+            var delivery = _pendingDeliveries.FirstOrDefault(d => d.Id == deliveryId.Value);
+            if (delivery != null)
+            {
+                // Auto populate receipt items from the delivery items
+                _newReceipt.Items = delivery.Items.Select(di => new DyeingYarnReceiptItem
+                {
+                    YarnId = di.YarnId,
+                    ReceivedColor = di.ColorRequested,
+                    QuantityKg = di.QuantityKg,
+                    WastageKg = 0.000m,
+                    DeliveryItemId = di.Id
+                }).ToList();
+            }
+        }
+        else
+        {
+            // Reset to blank single item if delivery deselected
+            _newReceipt.Items = new List<DyeingYarnReceiptItem> { new() { YarnId = Guid.Empty, QuantityKg = 1.000m, WastageKg = 0.000m } };
+        }
+    }
+
+    private void AddLineItem()
+    {
+        _newReceipt.Items.Add(new DyeingYarnReceiptItem { YarnId = Guid.Empty, QuantityKg = 1.000m, WastageKg = 0.000m });
+    }
+
+    private void RemoveLineItem(int index)
+    {
+        if (_newReceipt.Items.Count > 1)
+        {
+            _newReceipt.Items.RemoveAt(index);
+        }
+    }
+
+    private bool IsFormValid()
+    {
+        if (string.IsNullOrWhiteSpace(_newReceipt.ReceiptNo)) return false;
+        if (_newReceipt.JobWorkerId == Guid.Empty) return false;
+        if (_newReceipt.Items.Any(i => i.YarnId == Guid.Empty || i.QuantityKg <= 0 || string.IsNullOrWhiteSpace(i.ReceivedColor))) return false;
+        return true;
+    }
+
+    private async Task SaveReceipt()
+    {
+        if (!IsFormValid()) return;
+
+        try
+        {
+            _newReceipt.ReceiptDate = _receiptDate ?? DateTime.Today;
+            var response = await Http.PostAsJsonAsync("api/Dyeing/receipts", _newReceipt);
+            if (response.IsSuccessStatusCode)
+            {
+                Snackbar.Add("Yarn receipt recorded & stock updated successfully!", Severity.Success);
+                _isFormOpen = false;
+                await LoadReceipts();
+                await LoadDeliveries(); // Refresh deliveries to update statuses
+            }
+            else
+            {
+                Snackbar.Add("Failed to record receipt: " + response.ReasonPhrase, Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add("Error saving receipt: " + ex.Message, Severity.Error);
+        }
+    }
+}

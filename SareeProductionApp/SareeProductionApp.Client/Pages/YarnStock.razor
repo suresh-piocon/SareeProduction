@@ -1,0 +1,335 @@
+@page "/yarn-stock"
+@inject HttpClient Http
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+
+<PageTitle>Yarn & Stock - Saree Production</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Large" Class="my-4">
+    <MudTabs Elevation="2" Rounded="true" ApplyEffectsToInnerViews="true" PanelClass="pa-4">
+        <!-- TAB 1: YARN STOCK LEVELS -->
+        <MudTabPanel Text="Yarn Stock Levels" Icon="@Icons.Material.Filled.Inventory">
+            <div class="d-flex align-center justify-space-between mb-4">
+                <div>
+                    <MudText Typo="Typo.h5" Color="Color.Primary"><b>Yarn Stock Management</b></MudText>
+                    <MudText Typo="Typo.subtitle2" Color="Color.Secondary">Monitor and adjust current yarn inventory quantities</MudText>
+                </div>
+            </div>
+
+            <MudTable Items="_stockList" Loading="_loadingStock" Elevation="0">
+                <HeaderContent>
+                    <MudTh>Yarn Type</MudTh>
+                    <MudTh>Color</MudTh>
+                    <MudTh>Denier</MudTh>
+                    <MudTh>Current Stock</MudTh>
+                    <MudTh>Status</MudTh>
+                    <MudTh>Actions</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd DataLabel="Yarn Type"><b>@context.Yarn?.YarnType</b></MudTd>
+                    <MudTd DataLabel="Color">@(context.Yarn?.Color ?? "-")</MudTd>
+                    <MudTd DataLabel="Denier">@(context.Yarn?.Denier ?? "-")</MudTd>
+                    <MudTd DataLabel="Current Stock">
+                        <MudText Color="@(context.Quantity < 5.000m ? Color.Error : Color.Default)">
+                            <b>@context.Quantity.ToString("F3") kg</b>
+                        </MudText>
+                    </MudTd>
+                    <MudTd DataLabel="Status">
+                        @if (context.Quantity < 5.000m)
+                        {
+                            <MudChip T="string" Color="Color.Error" Size="Size.Small" Icon="@Icons.Material.Filled.Warning">Low Stock</MudChip>
+                        }
+                        else
+                        {
+                            <MudChip T="string" Color="Color.Success" Size="Size.Small" Icon="@Icons.Material.Filled.CheckCircle">In Stock</MudChip>
+                        }
+                    </MudTd>
+                    <MudTd DataLabel="Actions">
+                        <MudButton Variant="Variant.Outlined" Color="Color.Primary" Size="Size.Small" StartIcon="@Icons.Material.Filled.EditCalendar" OnClick="@(() => OpenAdjustmentDialog(context))">
+                            Adjust Stock
+                        </MudButton>
+                    </MudTd>
+                </RowTemplate>
+            </MudTable>
+        </MudTabPanel>
+
+        <!-- TAB 2: YARN CATALOG MASTER -->
+        <MudTabPanel Text="Yarn Catalog Master" Icon="@Icons.Material.Filled.List">
+            <div class="d-flex align-center justify-space-between mb-4">
+                <div>
+                    <MudText Typo="Typo.h5" Color="Color.Primary"><b>Yarn Master Catalog</b></MudText>
+                    <MudText Typo="Typo.subtitle2" Color="Color.Secondary">Create and manage different yarn types (Silk, Zari, Cotton)</MudText>
+                </div>
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenCreateDialog">
+                    Add Yarn Type
+                </MudButton>
+            </div>
+
+            <MudTable Items="_yarns" Filter="new Func<YarnMaster,bool>(FilterYarnFunc)" @bind-SelectedItem="_selectedYarn" Loading="_loadingYarn" Elevation="0">
+                <ToolBarContent>
+                    <MudSpacer />
+                    <MudTextField @bind-Value="_searchYarnString" Placeholder="Search yarn..." Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" IconSize="Size.Medium" Class="mt-0" Immediate="true"></MudTextField>
+                </ToolBarContent>
+                <HeaderContent>
+                    <MudTh>Yarn Type</MudTh>
+                    <MudTh>Color</MudTh>
+                    <MudTh>Denier (Thickness)</MudTh>
+                    <MudTh>Description</MudTh>
+                    <MudTh>Actions</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd DataLabel="Yarn Type"><b>@context.YarnType</b></MudTd>
+                    <MudTd DataLabel="Color">@(context.Color ?? "-")</MudTd>
+                    <MudTd DataLabel="Denier">@(context.Denier ?? "-")</MudTd>
+                    <MudTd DataLabel="Description">@(context.Description ?? "-")</MudTd>
+                    <MudTd DataLabel="Actions">
+                        <MudIconButton Icon="@Icons.Material.Filled.Edit" Color="Color.Info" Size="Size.Small" OnClick="@(() => OpenEditDialog(context))" />
+                        <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" Size="Size.Small" OnClick="@(() => ConfirmDeleteYarn(context))" />
+                    </MudTd>
+                </RowTemplate>
+                <PagerContent>
+                    <MudTablePager />
+                </PagerContent>
+            </MudTable>
+        </MudTabPanel>
+    </MudTabs>
+</MudContainer>
+
+<!-- Create/Edit Yarn Dialog -->
+<MudDialog @bind-Open="_isYarnFormOpen" Options="_dialogOptions">
+    <TitleContent>
+        <MudText Typo="Typo.h6">
+            <MudIcon Icon="@(_editYarnModel.Id == Guid.Empty ? Icons.Material.Filled.Add : Icons.Material.Filled.Edit)" Class="mr-2" />
+            @(_editYarnModel.Id == Guid.Empty ? "Add New Yarn Type" : "Edit Yarn Type")
+        </MudText>
+    </TitleContent>
+    <DialogContent>
+        <EditForm Model="@_editYarnModel" OnValidSubmit="SaveYarn">
+            <DataAnnotationsValidator />
+            <MudGrid>
+                <MudItem xs="12">
+                    <MudSelect T="string" Label="Yarn Category" @bind-Value="_editYarnModel.YarnType" Required="true" Variant="Variant.Outlined">
+                        <MudSelectItem Value="@("Silk")">Silk</MudSelectItem>
+                        <MudSelectItem Value="@("Zari")">Zari</MudSelectItem>
+                        <MudSelectItem Value="@("Cotton")">Cotton</MudSelectItem>
+                        <MudSelectItem Value="@("Polyester")">Polyester</MudSelectItem>
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudTextField Label="Color / Code" @bind-Value="_editYarnModel.Color" Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudTextField Label="Denier (e.g. 16/18 Denier)" @bind-Value="_editYarnModel.Denier" Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12">
+                    <MudTextField Label="Description / Notes" @bind-Value="_editYarnModel.Description" Lines="3" Variant="Variant.Outlined" />
+                </MudItem>
+            </MudGrid>
+            <div class="d-flex justify-end mt-6">
+                <MudButton OnClick="CloseYarnDialog" Class="mr-2">Cancel</MudButton>
+                <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary">Save</MudButton>
+            </div>
+        </EditForm>
+    </DialogContent>
+</MudDialog>
+
+<!-- Stock Adjustment Dialog -->
+<MudDialog @bind-Open="_isAdjustFormOpen" Options="_dialogOptions">
+    <TitleContent>
+        <MudText Typo="Typo.h6">
+            <MudIcon Icon="@Icons.Material.Filled.EditCalendar" Class="mr-2" />
+            Adjust Stock Level
+        </MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudGrid>
+            <MudItem xs="12">
+                <MudText Typo="Typo.body1">Yarn: <b>@_adjustStockModel.Yarn?.YarnType</b> - @_adjustStockModel.Yarn?.Color</MudText>
+                <MudText Typo="Typo.body2">Current Stock: <b>@_adjustStockModel.Quantity.ToString("F3") kg</b></MudText>
+            </MudItem>
+            <MudItem xs="12">
+                <MudNumericField Label="Adjustment Quantity (Use negative for subtraction)" @bind-Value="_adjustQuantity" Format="F3" HelperText="Amount in kg to add or subtract" Variant="Variant.Outlined" />
+            </MudItem>
+        </MudGrid>
+        <div class="d-flex justify-end mt-6">
+            <MudButton OnClick="CloseAdjustDialog" Class="mr-2">Cancel</MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveStockAdjustment">Apply</MudButton>
+        </div>
+    </DialogContent>
+</MudDialog>
+
+@code {
+    private List<YarnMaster> _yarns = new();
+    private List<SareeProductionApp.Client.Models.YarnStock> _stockList = new();
+    private YarnMaster _selectedYarn = new();
+    private YarnMaster _editYarnModel = new();
+    private SareeProductionApp.Client.Models.YarnStock _adjustStockModel = new();
+
+    private string _searchYarnString = "";
+    private bool _loadingYarn = true;
+    private bool _loadingStock = true;
+    private bool _isYarnFormOpen = false;
+    private bool _isAdjustFormOpen = false;
+    private decimal _adjustQuantity = 0.000m;
+
+    private DialogOptions _dialogOptions = new() { MaxWidth = MaxWidth.Small, FullWidth = true, CloseButton = true };
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadYarns();
+        await LoadStock();
+    }
+
+    private async Task LoadYarns()
+    {
+        _loadingYarn = true;
+        try
+        {
+            _yarns = await Http.GetFromJsonAsync<List<YarnMaster>>("api/Yarn") ?? new();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add("Error loading yarns: " + ex.Message, Severity.Error);
+        }
+        finally
+        {
+            _loadingYarn = false;
+        }
+    }
+
+    private async Task LoadStock()
+    {
+        _loadingStock = true;
+        try
+        {
+            _stockList = await Http.GetFromJsonAsync<List<SareeProductionApp.Client.Models.YarnStock>>("api/Yarn/stock") ?? new();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add("Error loading stock: " + ex.Message, Severity.Error);
+        }
+        finally
+        {
+            _loadingStock = false;
+        }
+    }
+
+    private bool FilterYarnFunc(YarnMaster yarn)
+    {
+        if (string.IsNullOrWhiteSpace(_searchYarnString)) return true;
+        if (yarn.YarnType.Contains(_searchYarnString, StringComparison.OrdinalIgnoreCase)) return true;
+        if (yarn.Color?.Contains(_searchYarnString, StringComparison.OrdinalIgnoreCase) ?? false) return true;
+        if (yarn.Denier?.Contains(_searchYarnString, StringComparison.OrdinalIgnoreCase) ?? false) return true;
+        return false;
+    }
+
+    private void OpenCreateDialog()
+    {
+        _editYarnModel = new YarnMaster { Id = Guid.Empty };
+        _isYarnFormOpen = true;
+    }
+
+    private void OpenEditDialog(YarnMaster yarn)
+    {
+        _editYarnModel = new YarnMaster
+        {
+            Id = yarn.Id,
+            YarnType = yarn.YarnType,
+            Color = yarn.Color,
+            Denier = yarn.Denier,
+            Description = yarn.Description
+        };
+        _isYarnFormOpen = true;
+    }
+
+    private void CloseYarnDialog()
+    {
+        _isYarnFormOpen = false;
+    }
+
+    private async Task SaveYarn()
+    {
+        try
+        {
+            if (_editYarnModel.Id == Guid.Empty)
+            {
+                var response = await Http.PostAsJsonAsync("api/Yarn", _editYarnModel);
+                if (response.IsSuccessStatusCode)
+                {
+                    Snackbar.Add("Yarn type created successfully!", Severity.Success);
+                }
+            }
+            else
+            {
+                var response = await Http.PutAsJsonAsync($"api/Yarn/{_editYarnModel.Id}", _editYarnModel);
+                if (response.IsSuccessStatusCode)
+                {
+                    Snackbar.Add("Yarn type updated successfully!", Severity.Success);
+                }
+            }
+            _isYarnFormOpen = false;
+            await LoadYarns();
+            await LoadStock();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add("Error saving yarn: " + ex.Message, Severity.Error);
+        }
+    }
+
+    private async Task ConfirmDeleteYarn(YarnMaster yarn)
+    {
+        bool? result = await DialogService.ShowMessageBoxAsync(
+            "Warning", 
+            $"Are you sure you want to delete yarn type '{yarn.YarnType} ({yarn.Color})'? This will also delete its stock data.", 
+            yesText: "Delete", cancelText: "Cancel");
+
+        if (result == true)
+        {
+            try
+            {
+                var response = await Http.DeleteAsync($"api/Yarn/{yarn.Id}");
+                if (response.IsSuccessStatusCode)
+                {
+                    Snackbar.Add("Yarn type deleted successfully!", Severity.Success);
+                    await LoadYarns();
+                    await LoadStock();
+                }
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add("Error deleting yarn type: " + ex.Message, Severity.Error);
+            }
+        }
+    }
+
+    private void OpenAdjustmentDialog(SareeProductionApp.Client.Models.YarnStock stock)
+    {
+        _adjustStockModel = stock;
+        _adjustQuantity = 0.000m;
+        _isAdjustFormOpen = true;
+    }
+
+    private void CloseAdjustDialog()
+    {
+        _isAdjustFormOpen = false;
+    }
+
+    private async Task SaveStockAdjustment()
+    {
+        try
+        {
+            var response = await Http.PostAsync($"api/Yarn/stock/adjust?yarnId={_adjustStockModel.YarnId}&quantity={_adjustQuantity}", null);
+            if (response.IsSuccessStatusCode)
+            {
+                Snackbar.Add("Stock adjusted successfully!", Severity.Success);
+                _isAdjustFormOpen = false;
+                await LoadStock();
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add("Error adjusting stock: " + ex.Message, Severity.Error);
+        }
+    }
+}

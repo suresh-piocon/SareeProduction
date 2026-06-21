@@ -1,0 +1,263 @@
+@page "/dyeing-delivery"
+@inject HttpClient Http
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+
+<PageTitle>Yarn Delivery - Saree Production</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Large" Class="my-4">
+    <MudGrid>
+        <MudItem xs="12">
+            <MudCard Elevation="2" Class="pa-4">
+                <MudCardContent>
+                    <div class="d-flex align-center justify-space-between mb-4">
+                        <div>
+                            <MudText Typo="Typo.h5" Color="Color.Primary"><b>Yarn Delivery to Dyers</b></MudText>
+                            <MudText Typo="Typo.subtitle2" Color="Color.Secondary">Issue raw yarn to dyers for custom color processing</MudText>
+                        </div>
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.LocalShipping" OnClick="OpenCreateDialog">
+                            New Delivery Batch
+                        </MudButton>
+                    </div>
+
+                    <MudTable Items="_deliveries" Loading="_loading" Elevation="0" Hover="true">
+                        <HeaderContent>
+                            <MudTh>Delivery No</MudTh>
+                            <MudTh>Dyer / Job Worker</MudTh>
+                            <MudTh>Delivery Date</MudTh>
+                            <MudTh>Items</MudTh>
+                            <MudTh>Status</MudTh>
+                            <MudTh>Remarks</MudTh>
+                        </HeaderContent>
+                        <RowTemplate>
+                            <MudTd DataLabel="Delivery No"><b>@context.DeliveryNo</b></MudTd>
+                            <MudTd DataLabel="Dyer">@(context.JobWorker?.Name ?? "-")</MudTd>
+                            <MudTd DataLabel="Delivery Date">@context.DeliveryDate.ToString("yyyy-MM-dd")</MudTd>
+                            <MudTd DataLabel="Items">
+                                <div class="d-flex flex-column gap-1">
+                                    @foreach (var item in context.Items)
+                                    {
+                                        <MudText Typo="Typo.body2">
+                                            • @item.Yarn?.YarnType - @(item.Yarn?.Color ?? "Raw") (@item.QuantityKg.ToString("F3") kg) ➔ <i>Req. Color: @(item.ColorRequested ?? "N/A")</i>
+                                        </MudText>
+                                    }
+                                </div>
+                            </MudTd>
+                            <MudTd DataLabel="Status">
+                                <MudChip T="string" Color="@GetStatusColor(context.Status)" Size="Size.Small">
+                                    @context.Status
+                                </MudChip>
+                            </MudTd>
+                            <MudTd DataLabel="Remarks">@(context.Remarks ?? "-")</MudTd>
+                        </RowTemplate>
+                        <PagerContent>
+                            <MudTablePager />
+                        </PagerContent>
+                    </MudTable>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+    </MudGrid>
+</MudContainer>
+
+<!-- New Delivery Dialog -->
+<MudDialog @bind-Open="_isFormOpen" Options="_dialogOptions">
+    <TitleContent>
+        <MudText Typo="Typo.h6">
+            <MudIcon Icon="@Icons.Material.Filled.LocalShipping" Class="mr-2" />
+            New Yarn Delivery Batch
+        </MudText>
+    </TitleContent>
+    <DialogContent>
+        <EditForm Model="@_newDelivery" OnValidSubmit="SaveDelivery">
+            <DataAnnotationsValidator />
+            <MudGrid>
+                <MudItem xs="12" sm="6">
+                    <MudTextField Label="Delivery No" @bind-Value="_newDelivery.DeliveryNo" Required="true" Variant="Variant.Outlined" Placeholder="e.g. DEL-001" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudDatePicker Label="Delivery Date" @bind-Date="_deliveryDate" Required="true" Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12">
+                    <MudSelect T="Guid" Label="Select Dyer (Job Worker)" @bind-Value="_newDelivery.JobWorkerId" Required="true" Variant="Variant.Outlined">
+                        <MudSelectItem T="Guid" Value="Guid.Empty">-- Select Dyer --</MudSelectItem>
+                        @foreach (var dyer in _dyers)
+                        {
+                            <MudSelectItem Value="@dyer.Id">@dyer.Name (@dyer.Place)</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12">
+                    <MudTextField Label="Remarks / Special Instructions" @bind-Value="_newDelivery.Remarks" Lines="2" Variant="Variant.Outlined" />
+                </MudItem>
+                
+                <!-- Items section -->
+                <MudItem xs="12">
+                    <MudDivider Class="my-4" />
+                    <div class="d-flex align-center justify-space-between mb-2">
+                        <MudText Typo="Typo.subtitle1"><b>Yarn Items to Deliver</b></MudText>
+                        <MudButton StartIcon="@Icons.Material.Filled.Add" Variant="Variant.Text" Color="Color.Primary" OnClick="AddLineItem">Add Item Line</MudButton>
+                    </div>
+
+                    @for (int i = 0; i < _newDelivery.Items.Count; i++)
+                    {
+                        var index = i;
+                        var item = _newDelivery.Items[index];
+                        <div class="d-flex align-center gap-4 mb-3 border pa-2 rounded">
+                            <MudSelect T="Guid" Label="Yarn type" @bind-Value="item.YarnId" Required="true" Style="min-width: 150px;">
+                                <MudSelectItem T="Guid" Value="Guid.Empty">-- Select Yarn --</MudSelectItem>
+                                @foreach (var y in _yarns)
+                                {
+                                    <MudSelectItem Value="@y.Id">@y.YarnType (@y.Color)</MudSelectItem>
+                                }
+                            </MudSelect>
+                            <MudTextField Label="Requested Color" @bind-Value="item.ColorRequested" Required="true" />
+                            <MudNumericField Label="Quantity (kg)" @bind-Value="item.QuantityKg" Format="F3" Required="true" HideSpinButtons="true" />
+                            <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" OnClick="@(() => RemoveLineItem(index))" Disabled="@(_newDelivery.Items.Count <= 1)" />
+                        </div>
+                    }
+                </MudItem>
+            </MudGrid>
+            <div class="d-flex justify-end mt-6">
+                <MudButton OnClick="CloseDialog" Class="mr-2">Cancel</MudButton>
+                <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" Disabled="@(!IsFormValid())">Deliver & Deduct Stock</MudButton>
+            </div>
+        </EditForm>
+    </DialogContent>
+</MudDialog>
+
+@code {
+    private List<DyeingYarnDelivery> _deliveries = new();
+    private List<JobWorker> _dyers = new();
+    private List<YarnMaster> _yarns = new();
+    private DyeingYarnDelivery _newDelivery = new();
+    private DateTime? _deliveryDate = DateTime.Today;
+    private bool _loading = true;
+    private bool _isFormOpen = false;
+
+    private DialogOptions _dialogOptions = new() { MaxWidth = MaxWidth.Medium, FullWidth = true, CloseButton = true };
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadDeliveries();
+        await LoadDyers();
+        await LoadYarns();
+    }
+
+    private async Task LoadDeliveries()
+    {
+        _loading = true;
+        try
+        {
+            _deliveries = await Http.GetFromJsonAsync<List<DyeingYarnDelivery>>("api/Dyeing/deliveries") ?? new();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add("Error loading deliveries: " + ex.Message, Severity.Error);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task LoadDyers()
+    {
+        try
+        {
+            var workers = await Http.GetFromJsonAsync<List<JobWorker>>("api/JobWorkers") ?? new();
+            _dyers = workers.Where(w => w.WorkerType == "Dyer").ToList();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add("Error loading dyers: " + ex.Message, Severity.Error);
+        }
+    }
+
+    private async Task LoadYarns()
+    {
+        try
+        {
+            _yarns = await Http.GetFromJsonAsync<List<YarnMaster>>("api/Yarn") ?? new();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add("Error loading yarns: " + ex.Message, Severity.Error);
+        }
+    }
+
+    private void OpenCreateDialog()
+    {
+        _newDelivery = new DyeingYarnDelivery
+        {
+            DeliveryNo = "DEL-" + DateTime.Now.ToString("yyyyMMdd-HHmmss"),
+            JobWorkerId = Guid.Empty,
+            Items = new List<DyeingYarnDeliveryItem> { new() { YarnId = Guid.Empty, QuantityKg = 1.000m } }
+        };
+        _deliveryDate = DateTime.Today;
+        _isFormOpen = true;
+    }
+
+    private void CloseDialog()
+    {
+        _isFormOpen = false;
+    }
+
+    private void AddLineItem()
+    {
+        _newDelivery.Items.Add(new DyeingYarnDeliveryItem { YarnId = Guid.Empty, QuantityKg = 1.000m });
+    }
+
+    private void RemoveLineItem(int index)
+    {
+        if (_newDelivery.Items.Count > 1)
+        {
+            _newDelivery.Items.RemoveAt(index);
+        }
+    }
+
+    private bool IsFormValid()
+    {
+        if (string.IsNullOrWhiteSpace(_newDelivery.DeliveryNo)) return false;
+        if (_newDelivery.JobWorkerId == Guid.Empty) return false;
+        if (_newDelivery.Items.Any(i => i.YarnId == Guid.Empty || i.QuantityKg <= 0 || string.IsNullOrWhiteSpace(i.ColorRequested))) return false;
+        return true;
+    }
+
+    private async Task SaveDelivery()
+    {
+        if (!IsFormValid()) return;
+
+        try
+        {
+            _newDelivery.DeliveryDate = _deliveryDate ?? DateTime.Today;
+            var response = await Http.PostAsJsonAsync("api/Dyeing/deliveries", _newDelivery);
+            if (response.IsSuccessStatusCode)
+            {
+                Snackbar.Add("Yarn delivery created & stock updated successfully!", Severity.Success);
+                _isFormOpen = false;
+                await LoadDeliveries();
+            }
+            else
+            {
+                Snackbar.Add("Failed to create delivery: " + response.ReasonPhrase, Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add("Error saving delivery: " + ex.Message, Severity.Error);
+        }
+    }
+
+    private Color GetStatusColor(string status)
+    {
+        return status switch
+        {
+            "Pending" => Color.Warning,
+            "Received" => Color.Success,
+            "Partially Received" => Color.Info,
+            "Cancelled" => Color.Error,
+            _ => Color.Default
+        };
+    }
+}
