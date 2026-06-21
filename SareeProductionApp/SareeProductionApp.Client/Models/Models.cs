@@ -79,7 +79,10 @@ namespace SareeProductionApp.Client.Models
         public YarnMaster? Yarn { get; set; }
 
         [Column("quantity")]
-        public decimal Quantity { get; set; } = 0.000m;
+        public decimal Quantity { get; set; } = 0.000m; // weight in kg
+
+        [Column("qty")]
+        public decimal Qty { get; set; } = 0.000m; // quantity count (cones/bags/etc)
 
         [Column("created_at")]
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

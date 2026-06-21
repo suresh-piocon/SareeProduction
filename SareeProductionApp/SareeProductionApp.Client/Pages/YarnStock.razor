@@ -21,7 +21,8 @@
                     <MudTh>Yarn Type</MudTh>
                     <MudTh>Color</MudTh>
                     <MudTh>Denier</MudTh>
-                    <MudTh>Current Stock</MudTh>
+                    <MudTh>Current Qty</MudTh>
+                    <MudTh>Current Weight (kg)</MudTh>
                     <MudTh>Status</MudTh>
                     <MudTh>Actions</MudTh>
                 </HeaderContent>
@@ -29,7 +30,10 @@
                     <MudTd DataLabel="Yarn Type"><b>@context.Yarn?.YarnType</b></MudTd>
                     <MudTd DataLabel="Color">@(context.Yarn?.Color ?? "-")</MudTd>
                     <MudTd DataLabel="Denier">@(context.Yarn?.Denier ?? "-")</MudTd>
-                    <MudTd DataLabel="Current Stock">
+                    <MudTd DataLabel="Current Qty">
+                        <b>@context.Qty.ToString("F3")</b>
+                    </MudTd>
+                    <MudTd DataLabel="Current Weight">
                         <MudText Color="@(context.Quantity < 5.000m ? Color.Error : Color.Default)">
                             <b>@context.Quantity.ToString("F3") kg</b>
                         </MudText>
@@ -109,10 +113,11 @@
             <MudGrid>
                 <MudItem xs="12">
                     <MudSelect T="string" Label="Yarn Category" @bind-Value="_editYarnModel.YarnType" Required="true" Variant="Variant.Outlined">
-                        <MudSelectItem Value="@("Silk")">Silk</MudSelectItem>
-                        <MudSelectItem Value="@("Zari")">Zari</MudSelectItem>
-                        <MudSelectItem Value="@("Cotton")">Cotton</MudSelectItem>
-                        <MudSelectItem Value="@("Polyester")">Polyester</MudSelectItem>
+                        <MudSelectItem Value="@("Warp")">Warp</MudSelectItem>
+                        <MudSelectItem Value="@("Weft")">Weft</MudSelectItem>
+                        <MudSelectItem Value="@("Jari")">Jari</MudSelectItem>
+                        <MudSelectItem Value="@("Cone")">Cone</MudSelectItem>
+                        <MudSelectItem Value="@("Others")">Others</MudSelectItem>
                     </MudSelect>
                 </MudItem>
                 <MudItem xs="12" sm="6">
@@ -124,6 +129,15 @@
                 <MudItem xs="12">
                     <MudTextField Label="Description / Notes" @bind-Value="_editYarnModel.Description" Lines="3" Variant="Variant.Outlined" />
                 </MudItem>
+                @if (_editYarnModel.Id == Guid.Empty)
+                {
+                    <MudItem xs="12" sm="6">
+                        <MudNumericField Label="Initial Qty (Count)" @bind-Value="_initialStockQty" Format="F3" Min="0.000m" HelperText="Starting count (cones/bags)" Variant="Variant.Outlined" />
+                    </MudItem>
+                    <MudItem xs="12" sm="6">
+                        <MudNumericField Label="Initial Weight (kg)" @bind-Value="_initialStockWeight" Format="F3" Min="0.000m" HelperText="Starting weight in kg" Variant="Variant.Outlined" />
+                    </MudItem>
+                }
             </MudGrid>
             <div class="d-flex justify-end mt-6">
                 <MudButton OnClick="CloseYarnDialog" Class="mr-2">Cancel</MudButton>
@@ -145,10 +159,15 @@
         <MudGrid>
             <MudItem xs="12">
                 <MudText Typo="Typo.body1">Yarn: <b>@_adjustStockModel.Yarn?.YarnType</b> - @_adjustStockModel.Yarn?.Color</MudText>
-                <MudText Typo="Typo.body2">Current Stock: <b>@_adjustStockModel.Quantity.ToString("F3") kg</b></MudText>
+                <MudText Typo="Typo.body2">
+                    Current Stock: <b>@_adjustStockModel.Qty.ToString("F3") Qty</b> | <b>@_adjustStockModel.Quantity.ToString("F3") kg</b>
+                </MudText>
             </MudItem>
-            <MudItem xs="12">
-                <MudNumericField Label="Adjustment Quantity (Use negative for subtraction)" @bind-Value="_adjustQuantity" Format="F3" HelperText="Amount in kg to add or subtract" Variant="Variant.Outlined" />
+            <MudItem xs="12" sm="6">
+                <MudNumericField Label="Adjustment Qty (Count)" @bind-Value="_adjustQty" Format="F3" HelperText="Count to add or subtract" Variant="Variant.Outlined" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudNumericField Label="Adjustment Weight (kg)" @bind-Value="_adjustWeight" Format="F3" HelperText="Weight to add or subtract in kg" Variant="Variant.Outlined" />
             </MudItem>
         </MudGrid>
         <div class="d-flex justify-end mt-6">
@@ -170,7 +189,10 @@
     private bool _loadingStock = true;
     private bool _isYarnFormOpen = false;
     private bool _isAdjustFormOpen = false;
-    private decimal _adjustQuantity = 0.000m;
+    private decimal _adjustQty = 0.000m;
+    private decimal _adjustWeight = 0.000m;
+    private decimal _initialStockQty = 0.000m;
+    private decimal _initialStockWeight = 0.000m;
 
     private DialogOptions _dialogOptions = new() { MaxWidth = MaxWidth.Small, FullWidth = true, CloseButton = true };
 
@@ -226,6 +248,8 @@
     private void OpenCreateDialog()
     {
         _editYarnModel = new YarnMaster { Id = Guid.Empty };
+        _initialStockQty = 0.000m;
+        _initialStockWeight = 0.000m;
         _isYarnFormOpen = true;
     }
 
@@ -256,6 +280,11 @@
                 var response = await Http.PostAsJsonAsync("api/Yarn", _editYarnModel);
                 if (response.IsSuccessStatusCode)
                 {
+                    var createdYarn = await response.Content.ReadFromJsonAsync<YarnMaster>();
+                    if (createdYarn != null && (_initialStockQty > 0.000m || _initialStockWeight > 0.000m))
+                    {
+                        await Http.PostAsync($"api/Yarn/stock/adjust?yarnId={createdYarn.Id}&quantity={_initialStockWeight}&qty={_initialStockQty}", null);
+                    }
                     Snackbar.Add("Yarn type created successfully!", Severity.Success);
                 }
             }
@@ -306,7 +335,8 @@
     private void OpenAdjustmentDialog(SareeProductionApp.Client.Models.YarnStock stock)
     {
         _adjustStockModel = stock;
-        _adjustQuantity = 0.000m;
+        _adjustQty = 0.000m;
+        _adjustWeight = 0.000m;
         _isAdjustFormOpen = true;
     }
 
@@ -319,7 +349,7 @@
     {
         try
         {
-            var response = await Http.PostAsync($"api/Yarn/stock/adjust?yarnId={_adjustStockModel.YarnId}&quantity={_adjustQuantity}", null);
+            var response = await Http.PostAsync($"api/Yarn/stock/adjust?yarnId={_adjustStockModel.YarnId}&quantity={_adjustWeight}&qty={_adjustQty}", null);
             if (response.IsSuccessStatusCode)
             {
                 Snackbar.Add("Stock adjusted successfully!", Severity.Success);

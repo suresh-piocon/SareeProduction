@@ -123,6 +123,7 @@ namespace SareeProductionApp.Controllers
                 Id = Guid.NewGuid(),
                 YarnId = yarn.Id,
                 Quantity = 0.000m,
+                Qty = 0.000m,
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow
             };
@@ -183,7 +184,7 @@ namespace SareeProductionApp.Controllers
         }
 
         [HttpPost("stock/adjust")]
-        public async Task<IActionResult> AdjustStock([FromQuery] Guid yarnId, [FromQuery] decimal quantity)
+        public async Task<IActionResult> AdjustStock([FromQuery] Guid yarnId, [FromQuery] decimal quantity, [FromQuery] decimal qty)
         {
             var stock = await _context.YarnStocks.FirstOrDefaultAsync(s => s.YarnId == yarnId);
             if (stock == null)
@@ -193,6 +194,7 @@ namespace SareeProductionApp.Controllers
                     Id = Guid.NewGuid(),
                     YarnId = yarnId,
                     Quantity = quantity,
+                    Qty = qty,
                     CreatedAt = DateTime.UtcNow,
                     UpdatedAt = DateTime.UtcNow
                 };
@@ -201,6 +203,7 @@ namespace SareeProductionApp.Controllers
             else
             {
                 stock.Quantity += quantity;
+                stock.Qty += qty;
                 stock.UpdatedAt = DateTime.UtcNow;
                 _context.Entry(stock).State = EntityState.Modified;
             }
