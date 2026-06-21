@@ -2,6 +2,7 @@
 @inject HttpClient Http
 @inject ISnackbar Snackbar
 @inject IDialogService DialogService
+@inject NavigationManager Navigation
 
 <PageTitle>Yarn & Stock - Saree Production</PageTitle>
 
@@ -12,7 +13,18 @@
             <div class="d-flex align-center justify-space-between mb-4">
                 <div>
                     <MudText Typo="Typo.h5" Color="Color.Primary"><b>Yarn Stock Management</b></MudText>
-                    <MudText Typo="Typo.subtitle2" Color="Color.Secondary">Monitor and adjust current yarn inventory quantities</MudText>
+                    <MudText Typo="Typo.subtitle2" Color="Color.Secondary">Monitor, edit, and reset yarn inventory quantities</MudText>
+                </div>
+                <div class="d-flex gap-2">
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenAddStockDialog">
+                        Add Stock
+                    </MudButton>
+                    <MudButton Variant="Variant.Outlined" Color="Color.Error" StartIcon="@Icons.Material.Filled.DeleteSweep" OnClick="ConfirmDeleteAllStock">
+                        Delete All
+                    </MudButton>
+                    <MudButton Variant="Variant.Filled" Color="Color.Secondary" StartIcon="@Icons.Material.Filled.ExitToApp" OnClick="ExitToDashboard">
+                        Exit
+                    </MudButton>
                 </div>
             </div>
 
@@ -49,9 +61,8 @@
                         }
                     </MudTd>
                     <MudTd DataLabel="Actions">
-                        <MudButton Variant="Variant.Outlined" Color="Color.Primary" Size="Size.Small" StartIcon="@Icons.Material.Filled.EditCalendar" OnClick="@(() => OpenAdjustmentDialog(context))">
-                            Adjust Stock
-                        </MudButton>
+                        <MudIconButton Icon="@Icons.Material.Filled.Edit" Color="Color.Primary" Size="Size.Small" OnClick="@(() => OpenEditStockDialog(context))" />
+                        <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" Size="Size.Small" OnClick="@(() => ConfirmDeleteStock(context))" />
                     </MudTd>
                 </RowTemplate>
             </MudTable>
@@ -147,33 +158,47 @@
     </DialogContent>
 </MudDialog>
 
-<!-- Stock Adjustment Dialog -->
-<MudDialog @bind-Visible="_isAdjustFormOpen" Options="_dialogOptions">
+<!-- Add/Edit Stock Dialog -->
+<MudDialog @bind-Visible="_isStockFormOpen" Options="_dialogOptions">
     <TitleContent>
         <MudText Typo="Typo.h6">
-            <MudIcon Icon="@Icons.Material.Filled.EditCalendar" Class="mr-2" />
-            Adjust Stock Level
+            <MudIcon Icon="@(_editStockModel.Id == Guid.Empty ? Icons.Material.Filled.Add : Icons.Material.Filled.Edit)" Class="mr-2" />
+            @(_editStockModel.Id == Guid.Empty ? "Add Yarn Stock" : "Edit Yarn Stock")
         </MudText>
     </TitleContent>
     <DialogContent>
-        <MudGrid>
-            <MudItem xs="12">
-                <MudText Typo="Typo.body1">Yarn: <b>@_adjustStockModel.Yarn?.YarnType</b> - @_adjustStockModel.Yarn?.Color</MudText>
-                <MudText Typo="Typo.body2">
-                    Current Stock: <b>@_adjustStockModel.Qty.ToString("F3") Qty</b> | <b>@_adjustStockModel.Quantity.ToString("F3") kg</b>
-                </MudText>
-            </MudItem>
-            <MudItem xs="12" sm="6">
-                <MudNumericField Label="Adjustment Qty (Count)" @bind-Value="_adjustQty" Format="F3" HelperText="Count to add or subtract" Variant="Variant.Outlined" />
-            </MudItem>
-            <MudItem xs="12" sm="6">
-                <MudNumericField Label="Adjustment Weight (kg)" @bind-Value="_adjustWeight" Format="F3" HelperText="Weight to add or subtract in kg" Variant="Variant.Outlined" />
-            </MudItem>
-        </MudGrid>
-        <div class="d-flex justify-end mt-6">
-            <MudButton OnClick="CloseAdjustDialog" Class="mr-2">Cancel</MudButton>
-            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveStockAdjustment">Apply</MudButton>
-        </div>
+        <EditForm Model="@_editStockModel" OnValidSubmit="SaveStock">
+            <DataAnnotationsValidator />
+            <MudGrid>
+                @if (_editStockModel.Id == Guid.Empty)
+                {
+                    <MudItem xs="12">
+                        <MudSelect T="Guid" Label="Select Yarn" @bind-Value="_editStockModel.YarnId" Required="true" Variant="Variant.Outlined">
+                            @foreach (var yarn in _yarns)
+                            {
+                                <MudSelectItem Value="@yarn.Id">@yarn.YarnType (@yarn.Color) - @yarn.Denier</MudSelectItem>
+                            }
+                        </MudSelect>
+                    </MudItem>
+                }
+                else
+                {
+                    <MudItem xs="12">
+                        <MudText Typo="Typo.subtitle1">Yarn Type: <b>@_editStockModel.Yarn?.YarnType (@_editStockModel.Yarn?.Color)</b></MudText>
+                    </MudItem>
+                }
+                <MudItem xs="12" sm="6">
+                    <MudNumericField Label="Qty (Count)" @bind-Value="_editStockModel.Qty" Format="F3" Min="0.000m" Required="true" Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudNumericField Label="Weight (kg)" @bind-Value="_editStockModel.Quantity" Format="F3" Min="0.000m" Required="true" Variant="Variant.Outlined" />
+                </MudItem>
+            </MudGrid>
+            <div class="d-flex justify-end mt-6">
+                <MudButton OnClick="CloseStockDialog" Class="mr-2">Cancel</MudButton>
+                <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary">Save</MudButton>
+            </div>
+        </EditForm>
     </DialogContent>
 </MudDialog>
 
@@ -188,9 +213,8 @@
     private bool _loadingYarn = true;
     private bool _loadingStock = true;
     private bool _isYarnFormOpen = false;
-    private bool _isAdjustFormOpen = false;
-    private decimal _adjustQty = 0.000m;
-    private decimal _adjustWeight = 0.000m;
+    private bool _isStockFormOpen = false;
+    private SareeProductionApp.Client.Models.YarnStock _editStockModel = new();
     private decimal _initialStockQty = 0.000m;
     private decimal _initialStockWeight = 0.000m;
 
@@ -332,34 +356,128 @@
         }
     }
 
-    private void OpenAdjustmentDialog(SareeProductionApp.Client.Models.YarnStock stock)
+    private void OpenAddStockDialog()
     {
-        _adjustStockModel = stock;
-        _adjustQty = 0.000m;
-        _adjustWeight = 0.000m;
-        _isAdjustFormOpen = true;
+        _editStockModel = new SareeProductionApp.Client.Models.YarnStock { Id = Guid.Empty };
+        _isStockFormOpen = true;
     }
 
-    private void CloseAdjustDialog()
+    private void OpenEditStockDialog(SareeProductionApp.Client.Models.YarnStock stock)
     {
-        _isAdjustFormOpen = false;
+        _editStockModel = new SareeProductionApp.Client.Models.YarnStock
+        {
+            Id = stock.Id,
+            YarnId = stock.YarnId,
+            Yarn = stock.Yarn,
+            Qty = stock.Qty,
+            Quantity = stock.Quantity,
+            CreatedAt = stock.CreatedAt
+        };
+        _isStockFormOpen = true;
     }
 
-    private async Task SaveStockAdjustment()
+    private void CloseStockDialog()
+    {
+        _isStockFormOpen = false;
+    }
+
+    private async Task SaveStock()
     {
         try
         {
-            var response = await Http.PostAsync($"api/Yarn/stock/adjust?yarnId={_adjustStockModel.YarnId}&quantity={_adjustWeight}&qty={_adjustQty}", null);
-            if (response.IsSuccessStatusCode)
+            if (_editStockModel.Id == Guid.Empty)
             {
-                Snackbar.Add("Stock adjusted successfully!", Severity.Success);
-                _isAdjustFormOpen = false;
-                await LoadStock();
+                var existing = _stockList.FirstOrDefault(s => s.YarnId == _editStockModel.YarnId);
+                if (existing != null)
+                {
+                    existing.Qty = _editStockModel.Qty;
+                    existing.Quantity = _editStockModel.Quantity;
+                    var response = await Http.PutAsJsonAsync($"api/Yarn/stock/{existing.Id}", existing);
+                    if (response.IsSuccessStatusCode)
+                    {
+                        Snackbar.Add("Stock updated successfully!", Severity.Success);
+                    }
+                }
+                else
+                {
+                    var response = await Http.PostAsync($"api/Yarn/stock/adjust?yarnId={_editStockModel.YarnId}&quantity={_editStockModel.Quantity}&qty={_editStockModel.Qty}", null);
+                    if (response.IsSuccessStatusCode)
+                    {
+                        Snackbar.Add("Stock created successfully!", Severity.Success);
+                    }
+                }
             }
+            else
+            {
+                var response = await Http.PutAsJsonAsync($"api/Yarn/stock/{_editStockModel.Id}", _editStockModel);
+                if (response.IsSuccessStatusCode)
+                {
+                    Snackbar.Add("Stock updated successfully!", Severity.Success);
+                }
+            }
+            _isStockFormOpen = false;
+            await LoadStock();
         }
         catch (Exception ex)
         {
-            Snackbar.Add("Error adjusting stock: " + ex.Message, Severity.Error);
+            Snackbar.Add("Error saving stock: " + ex.Message, Severity.Error);
         }
+    }
+
+    private async Task ConfirmDeleteStock(SareeProductionApp.Client.Models.YarnStock stock)
+    {
+        bool? result = await DialogService.ShowMessageBoxAsync(
+            "Warning", 
+            $"Are you sure you want to reset the stock of yarn '{stock.Yarn?.YarnType} ({stock.Yarn?.Color})' to 0?", 
+            yesText: "Delete / Reset", cancelText: "Cancel");
+
+        if (result == true)
+        {
+            try
+            {
+                stock.Qty = 0.000m;
+                stock.Quantity = 0.000m;
+                var response = await Http.PutAsJsonAsync($"api/Yarn/stock/{stock.Id}", stock);
+                if (response.IsSuccessStatusCode)
+                {
+                    Snackbar.Add("Stock reset to 0 successfully!", Severity.Success);
+                    await LoadStock();
+                }
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add("Error resetting stock: " + ex.Message, Severity.Error);
+            }
+        }
+    }
+
+    private async Task ConfirmDeleteAllStock()
+    {
+        bool? result = await DialogService.ShowMessageBoxAsync(
+            "Warning", 
+            "Are you sure you want to delete and reset ALL yarn stock levels to 0? This cannot be undone.", 
+            yesText: "Reset All", cancelText: "Cancel");
+
+        if (result == true)
+        {
+            try
+            {
+                var response = await Http.PostAsync("api/Yarn/stock/reset-all", null);
+                if (response.IsSuccessStatusCode)
+                {
+                    Snackbar.Add("All stock levels reset to 0 successfully!", Severity.Success);
+                    await LoadStock();
+                }
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add("Error resetting all stock: " + ex.Message, Severity.Error);
+            }
+        }
+    }
+
+    private void ExitToDashboard()
+    {
+        Navigation.NavigateTo("/");
     }
 }

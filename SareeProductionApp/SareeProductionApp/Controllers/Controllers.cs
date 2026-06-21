@@ -211,6 +211,38 @@ namespace SareeProductionApp.Controllers
             await _context.SaveChangesAsync();
             return Ok(stock);
         }
+
+        [HttpPut("stock/{id}")]
+        public async Task<IActionResult> UpdateStock(Guid id, YarnStock stock)
+        {
+            if (id != stock.Id) return BadRequest();
+
+            var existing = await _context.YarnStocks.FindAsync(id);
+            if (existing == null) return NotFound();
+
+            existing.Quantity = stock.Quantity;
+            existing.Qty = stock.Qty;
+            existing.UpdatedAt = DateTime.UtcNow;
+
+            _context.Entry(existing).State = EntityState.Modified;
+            await _context.SaveChangesAsync();
+            return NoContent();
+        }
+
+        [HttpPost("stock/reset-all")]
+        public async Task<IActionResult> ResetAllStock()
+        {
+            var stocks = await _context.YarnStocks.Where(s => s.DeletedAt == null).ToListAsync();
+            foreach (var stock in stocks)
+            {
+                stock.Quantity = 0.000m;
+                stock.Qty = 0.000m;
+                stock.UpdatedAt = DateTime.UtcNow;
+                _context.Entry(stock).State = EntityState.Modified;
+            }
+            await _context.SaveChangesAsync();
+            return NoContent();
+        }
     }
 
     // ============================================================================
